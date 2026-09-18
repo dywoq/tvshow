@@ -488,16 +488,41 @@ func (p *Parser) parseFor() (Statement, error) {
 }
 func (p *Parser) parseInitializer() (Expression, error) {
 	if p.cur().Type != token.LBRACE {
-		return p.expr(1)
+		return p.expr(2)
 	}
 	o := p.next()
 	n := &InitializerListExpr{Open: o}
 	for p.cur().Type != token.RBRACE {
+		var designators []Designator
+		for p.cur().Type == token.DOT || p.cur().Type == token.LBRACK {
+			dTok := p.next()
+			d := Designator{Token: dTok}
+			if dTok.Type == token.DOT {
+				fTok, e := p.expect(token.IDENT)
+				if e != nil {
+					return nil, e
+				}
+				d.Field = fTok
+			} else {
+				iExpr, e := p.expr(1)
+				if e != nil {
+					return nil, e
+				}
+				if _, e := p.expect(token.RBRACK); e != nil {
+					return nil, e
+				}
+				d.Index = iExpr
+			}
+			designators = append(designators, d)
+		}
+		if len(designators) > 0 {
+			p.accept(token.ASSIGN)
+		}
 		v, e := p.parseInitializer()
 		if e != nil {
 			return nil, e
 		}
-		n.Values = append(n.Values, InitializerElement{Value: v})
+		n.Values = append(n.Values, InitializerElement{Designators: designators, Value: v})
 		if _, ok := p.accept(token.COMMA); !ok {
 			break
 		}
@@ -563,14 +588,41 @@ func (p *Parser) prefix() (Expression, error) {
 	case token.INT, token.FLOAT, token.CHAR, token.STRING:
 		x = &LiteralExpr{t}
 	case token.LPAREN:
-		x, e := p.expr(1)
-		if e != nil {
-			return nil, e
+		if p.startsDeclaration() {
+			specs, e := p.parseSpecs()
+			if e != nil {
+				return nil, e
+			}
+			decl, e := p.parseDeclarator()
+			if e != nil {
+				return nil, e
+			}
+			if _, e = p.expect(token.RPAREN); e != nil {
+				return nil, e
+			}
+			if p.cur().Type == token.LBRACE {
+				init, e := p.parseInitializer()
+				if e != nil {
+					return nil, e
+				}
+				x = &CompoundLiteralExpr{Open: t, Type: specs, Declarator: decl, Initializer: init}
+			} else {
+				val, e := p.expr(13)
+				if e != nil {
+					return nil, e
+				}
+				x = &CastExpr{Open: t, Type: specs, Declarator: decl, Value: val}
+			}
+		} else {
+			var e error
+			x, e = p.expr(1)
+			if e != nil {
+				return nil, e
+			}
+			if _, e = p.expect(token.RPAREN); e != nil {
+				return nil, e
+			}
 		}
-		if _, e = p.expect(token.RPAREN); e != nil {
-			return nil, e
-		}
-		return x, nil
 	case token.PLUS, token.MINUS, token.LOGICAL_NOT, token.BIT_NOT, token.ASTERISK, token.BIT_AND, token.INCREMENT, token.DECREMENT:
 		v, e := p.prefix()
 		if e != nil {

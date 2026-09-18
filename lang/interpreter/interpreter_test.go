@@ -73,3 +73,72 @@ func TestExecuteAddressesPreservePostfixValue(t *testing.T) {
 		t.Errorf("Run = %#v, want 45", got)
 	}
 }
+
+func TestRunExecutesDocExampleStructAndMultiply(t *testing.T) {
+	program := programFromSource(t, `
+		typedef struct CalculationResult { int A; int B; } CalculationResult;
+		int Multiply(int a, int b) { return a * b; }
+		int Start() {
+			CalculationResult result;
+			result.A = 2;
+			result.B = 3;
+			return Multiply(result.A, result.B);
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(6) {
+		t.Errorf("Run = %#v, want 6", got)
+	}
+}
+
+func TestRunExecutesStructCompoundLiteralsAndDesignators(t *testing.T) {
+	program := programFromSource(t, `
+		typedef struct Point { int x; int y; } Point;
+		int Start() {
+			Point p1 = { 10, 20 };
+			Point p2 = (Point){ .y = 30, .x = 5 };
+			return p1.x + p1.y + p2.x + p2.y;
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(65) {
+		t.Errorf("Run = %#v, want 65", got)
+	}
+}
+
+func TestRunExecutesArrayCompoundLiteralsAndDesignators(t *testing.T) {
+	program := programFromSource(t, `
+		int Start() {
+			int a[] = { 1, 2, 3 };
+			int b[5] = { [1] = 10, [3] = 20 };
+			int c = (int[]){ 100, 200, 300 }[1];
+			return a[0] + a[1] + a[2] + b[1] + b[3] + c;
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(1 + 2 + 3 + 10 + 20 + 200) {
+		t.Errorf("Run = %#v, want %d", got, 1+2+3+10+20+200)
+	}
+}
+
+func TestRunAddressOfCompoundLiteral(t *testing.T) {
+	program := programFromSource(t, `
+		typedef struct Point { int x; int y; } Point;
+		int get_x(Point *p) { return p->x; }
+		int Start() {
+			return get_x(&(Point){ .x = 42, .y = 10 });
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}

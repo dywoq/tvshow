@@ -17,6 +17,13 @@ func analyzeSource(t *testing.T, source string) error {
 	return Analyze(program)
 }
 
+func TestAnalyzeAcceptsCompoundLiterals(t *testing.T) {
+	err := analyzeSource(t, `typedef struct Point { int x; int y; } Point; int Start() { Point p = (Point){.x = 10, .y = 20}; (Point){.x = 1}.x = 2; return (int[]){1, 2, 3}[0]; }`)
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+}
+
 func TestAnalyzeAcceptsScopedFunctionAndForwardCall(t *testing.T) {
 	err := analyzeSource(t, `int Start() { int value = next(1); { int value = 2; value++; } return value; } int next(int value) { return value; }`)
 	if err != nil {

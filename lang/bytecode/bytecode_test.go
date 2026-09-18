@@ -85,6 +85,30 @@ func TestTranslateControlFlowAndAssignments(t *testing.T) {
 	}
 }
 
+func TestTranslateCompoundLiteralsAndInitializerLists(t *testing.T) {
+	source := `
+		typedef struct CalculationResult { int A; int B; } CalculationResult;
+		int Start() {
+			CalculationResult res = (CalculationResult){ .A = 2, .B = 3 };
+			int arr[3] = { 1, 2, 3 };
+			return res.A + arr[1];
+		}`
+	program := translateSource(t, source)
+	if len(program.Functions) != 1 {
+		t.Fatalf("functions = %d, want 1", len(program.Functions))
+	}
+	seen := map[Opcode]bool{}
+	for _, instruction := range program.Functions[0].Code {
+		seen[instruction.Opcode] = true
+	}
+	if !seen[MakeStruct] {
+		t.Errorf("missing MakeStruct instruction in %#v", seen)
+	}
+	if !seen[MakeArray] {
+		t.Errorf("missing MakeArray instruction in %#v", seen)
+	}
+}
+
 func TestTranslateShortCircuitAndGlobals(t *testing.T) {
 	program := translateSource(t, `int flag = 0; int Start() { flag && (flag = 1); return flag ? flag : 2; }`)
 	if len(program.Globals) == 0 || program.Globals[0].Opcode != Declare {

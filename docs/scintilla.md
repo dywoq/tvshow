@@ -195,6 +195,8 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `jump_if_false` | `int` (instruction index) | Pops condition; jumps if false (`0`). |
 | `jump_if_true` | `int` (instruction index) | Pops condition; jumps if true (non-zero). |
 | `return` | none | Returns current stack top value (or `nil` if stack is empty). |
+| `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
+| `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
 
 ### Binary Format Specification (`Instruction.MarshalBinary`)
 
@@ -202,7 +204,7 @@ Instructions can be serialized into a portable, architecture-independent binary 
 
 1. **Header (3 bytes):**
    - Byte 0: Format Version (`1`)
-   - Byte 1: Opcode numeric identifier (1-19)
+   - Byte 1: Opcode numeric identifier (1-21)
    - Byte 2: Operand Kind (`0` = None, `1` = String, `2` = Integer)
 2. **Operand Payload (variable):**
    - Kind `0`: 0 bytes.
@@ -286,5 +288,5 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Function Calls | **Supported** | Argument stack lowering for guest and host function invocations. |
 | Cast Expressions (`(type)expr`) | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not enforce dynamic cast conversions. |
 | `sizeof` Operator | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not yet evaluate expression sizes. |
-| Compound Literals & Initializer Lists | **Parsed Only** | Syntactically parsed in AST; array/struct initializer list lowering in expressions is not yet implemented in bytecode translator. |
+| Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
 | `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |

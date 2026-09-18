@@ -276,6 +276,14 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 				return nil, nil
 			}
 			return stack[len(stack)-1], nil
+		case bytecode.MakeArray:
+			n, ok := ins.Operand.(int)
+			if !ok || n < 0 {
+				return fail("make_array requires a non-negative length")
+			}
+			stack = append(stack, make([]any, n))
+		case bytecode.MakeStruct:
+			stack = append(stack, make(map[string]any))
 		case bytecode.AddressIndex:
 			index, e := pop(ins)
 			if e != nil {
@@ -289,9 +297,29 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 			if e != nil || n < 0 {
 				return fail("address_index requires a non-negative integer index")
 			}
-			values, ok := base.([]any)
-			if !ok || int(n) >= len(values) {
-				return fail("array index is out of range")
+			var values []any
+			if ad, ok := base.(address); ok {
+				if ad.get() == nil {
+					ad.set(make([]any, int(n)+1))
+				}
+				v, ok := ad.get().([]any)
+				if !ok {
+					return fail("address_index requires an array aggregate")
+				}
+				if int(n) >= len(v) {
+					newSlice := make([]any, int(n)+1)
+					copy(newSlice, v)
+					ad.set(newSlice)
+					v = newSlice
+				}
+				values = v
+			} else if v, ok := base.([]any); ok {
+				if int(n) >= len(v) {
+					return fail("array index is out of range")
+				}
+				values = v
+			} else {
+				return fail("address_index requires an array aggregate")
 			}
 			at := int(n)
 			stack = append(stack, address{get: func() any { return values[at] }, set: func(v any) { values[at] = v }})
@@ -304,13 +332,20 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 			if e != nil {
 				return nil, e
 			}
-			ad, ok := base.(address)
-			if !ok {
+			var members map[string]any
+			if ad, ok := base.(address); ok {
+				if ad.get() == nil {
+					ad.set(make(map[string]any))
+				}
+				m, ok := ad.get().(map[string]any)
+				if !ok {
+					return fail("address_member requires a map[string]any aggregate")
+				}
+				members = m
+			} else if m, ok := base.(map[string]any); ok {
+				members = m
+			} else {
 				return fail("address_member requires an aggregate address")
-			}
-			members, ok := ad.get().(map[string]any)
-			if !ok {
-				return fail("address_member requires a map[string]any aggregate")
 			}
 			stack = append(stack, address{get: func() any { return members[member] }, set: func(v any) { members[member] = v }})
 		default:
@@ -411,6 +446,9 @@ func unary(op any, v any) (any, error) {
 	return nil, fmt.Errorf("unsupported unary operator %q", s)
 }
 func integer(v any) (int64, error) {
+	if v == nil {
+		return 0, nil
+	}
 	n, ok := v.(int64)
 	if !ok {
 		return 0, fmt.Errorf("integer operand required")
@@ -509,6 +547,8 @@ func operation(op any, l, r any) (any, error) {
 }
 func asFloat(v any) (float64, bool) {
 	switch n := v.(type) {
+	case nil:
+		return 0, true
 	case float64:
 		return n, true
 	case int64:
@@ -592,7 +632,7 @@ func DecodeInstructions(data [][]byte) ([]bytecode.Instruction, error) {
 	return out, nil
 }
 func decodeOpcode(n byte) (bytecode.Opcode, bool) {
-	ops := []bytecode.Opcode{"", bytecode.Declare, bytecode.PushLiteral, bytecode.Load, bytecode.Address, bytecode.AddressIndex, bytecode.AddressMember, bytecode.LoadIndirect, bytecode.StoreIndirect, bytecode.Unary, bytecode.ToBool, bytecode.Binary, bytecode.Dup, bytecode.Rotate, bytecode.Pop, bytecode.Call, bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue, bytecode.Return}
+	ops := []bytecode.Opcode{"", bytecode.Declare, bytecode.PushLiteral, bytecode.Load, bytecode.Address, bytecode.AddressIndex, bytecode.AddressMember, bytecode.LoadIndirect, bytecode.StoreIndirect, bytecode.Unary, bytecode.ToBool, bytecode.Binary, bytecode.Dup, bytecode.Rotate, bytecode.Pop, bytecode.Call, bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue, bytecode.Return, bytecode.MakeArray, bytecode.MakeStruct}
 	if int(n) >= len(ops) || n == 0 {
 		return "", false
 	}
