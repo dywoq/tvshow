@@ -48,7 +48,7 @@ typedef struct CalculationResult {
 ## Goals
 
 - Make language compliant with the C99 standard, including support of macro definitions, directives (#include, #ifndef etc.),
-  structs/typedefs, dynamic/fixed arrays, static functions.
+  structs/typedefs, dynamic/fixed arrays, static functions, while still respecting the differences of Scintilla.
 
 - Allow to integrate external symbols (functions, variables, etc.) in external Golang code.
 
@@ -68,3 +68,10 @@ typedef struct CalculationResult {
   - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree into bytecode.
   - `macro/` - Contains the macro expander. It takes a sequence of tokens and expands macro-function
     calls, expressions etc.
+  - `semantic/` - Contains the implementation of the semantic analysis.
+
+## Before the code's interpretation
+
+```
+lexer -> macro expander -> parser -> semantic analysis -> bytecode translator -> interpreter
+```
