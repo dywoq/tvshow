@@ -2,7 +2,7 @@
 
 ## Overview
 
-The virtual machine's language (called Scintilla) is inspired by the programming language C, specifically, standard C99.
+Scintilla is an interpreter that is inspired by the programming language C, specifically, standard C99.
 It is developed in Golang (its module is `lang/` at the root of folder). The differences are:
 
 - Lack of manual memory management, memory addresses and inline assembly code inserts.
@@ -50,7 +50,18 @@ typedef struct CalculationResult {
 - Make language compliant with the C99 standard, including support of macro definitions, directives (#include, #ifndef etc.),
   structs/typedefs, dynamic/fixed arrays, static functions.
 
-- Allow to integrate own interpreter symbols in Golang.
+- Allow to integrate external symbols (functions, variables, etc.) in external Golang code.
 
-- Make the Scintilla's lexer, parser, bytecode translator and bytecode interpreter public, modular and reusable
+- Make the Scintilla's lexer, parser, bytecode translator and bytecode interpreter public, modular, extendable and reusable
   in external Golang code.
+
+- Provide debugger to track the interpreter's state, frame etc.
+
+## Go modules
+
+- `lang/`
+  - `token/` - Contains the token type definition.
+  - `parser/` - Contains the parser implementation. Translates a sequence of tokens into the AST tree.
+  - `lexer/` - Contains the lexer implementation.
+  - `interpreter/` - Contains the interpreter implementation. It must execute bytecode provided by the bytecode translator.
+  - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree into bytecode.
