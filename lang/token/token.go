@@ -1,220 +1,376 @@
 package token
 
-// TokenType represents the type of a token
-type Type string
-
-const (
-	// Keyword types
-	TypeVoid    Type = "VOID"
-	TypeInt     Type = "INT"
-	TypeStruct  Type = "STRUCT"
-	TypeTypedef Type = "TYPEDEF"
-	TypeIf      Type = "IF"
-	TypeElse    Type = "ELSE"
-	TypeFor     Type = "FOR"
-	TypeWhile   Type = "WHILE"
-	TypeReturn  Type = "RETURN"
-	TypeSwitch  Type = "SWITCH"
-	TypeCase    Type = "CASE"
-	TypeDefault Type = "DEFAULT"
-
-	// Operator types
-	TypePlus         Type = "PLUS"
-	TypeMinus        Type = "MINUS"
-	TypeStar         Type = "STAR"
-	TypeSlash        Type = "SLASH"
-	TypePercent      Type = "PERCENT"
-	TypeEqual        Type = "EQUAL"
-	TypeNotEqual     Type = "NOT_EQUAL"
-	TypeLess         Type = "LESS"
-	TypeGreater      Type = "GREATER"
-	TypeLessEqual    Type = "LESS_EQUAL"
-	TypeGreaterEqual Type = "GREATER_EQUAL"
-	TypeAssign       Type = "ASSIGN"
-	TypePlusAssign   Type = "PLUS_ASSIGN"
-	TypeMinusAssign  Type = "MINUS_ASSIGN"
-	TypeStarAssign   Type = "STAR_ASSIGN"
-	TypeSlashAssign  Type = "SLASH_ASSIGN"
-	TypeModAssign    Type = "MOD_ASSIGN"
-	TypeIncDec       Type = "INC_DEC"
-
-	// Punctuation types
-	TypeLParen    Type = "LPAREN"
-	TypeRParen    Type = "RPAREN"
-	TypeLBrace    Type = "LBRACE"
-	TypeRBrace    Type = "RBRACE"
-	TypeLBracket  Type = "LBRACKET"
-	TypeRBracket  Type = "RBRACKET"
-	TypeComma     Type = "COMMA"
-	TypeSemicolon Type = "SEMICOLON"
-	TypeColon     Type = "COLON"
-
-	// Literal types
-	TypeIdentifier Type = "IDENTIFIER"
-	TypeInteger    Type = "INTEGER"
-	TypeFloat      Type = "FLOAT"
-	TypeString     Type = "STRING"
-	TypeCharacter  Type = "CHARACTER"
-
-	// Preprocessor types
-	TypeHash      Type = "HASH"
-	TypeInclude   Type = "INCLUDE"
-	TypeIfdef     Type = "IFDEF"
-	TypeIfndef    Type = "IFNDEF"
-	TypeDefine    Type = "DEFINE"
-	TypeIfToken   Type = "PREPROCESS_IF"
-	TypeElseToken Type = "PREPROCESS_ELSE"
-	TypeEndif     Type = "PREPROCESS_ENDIF"
-
-	// Special types
-	TypeEof   Type = "EOF"
-	TypeError Type = "ERROR"
+import (
+	"fmt"
+	"sync"
 )
 
-// Token represents a lexical token with its type, value, and position
+// TokenType represents the lexical type of a token.
+type TokenType int
+
+// Position represents a location in a source file (filename, line, column, offset).
+type Position struct {
+	Filename string
+	Line     int
+	Column   int
+	Offset   int
+}
+
+// String returns the string representation of a Position.
+func (p Position) String() string {
+	if p.Filename != "" {
+		return fmt.Sprintf("%s:%d:%d", p.Filename, p.Line, p.Column)
+	}
+	return fmt.Sprintf("%d:%d", p.Line, p.Column)
+}
+
+// Token represents a lexical token with its type, literal value, and source position.
 type Token struct {
-	Type   Type
-	Value  string
-	Line   int
-	Column int
+	Type    TokenType
+	Literal string
+	Pos     Position
 }
 
-// Keywords maps lowercase strings to their TokenType
-var Keywords = map[string]Type{
-	"void":    TypeVoid,
-	"int":     TypeInt,
-	"struct":  TypeStruct,
-	"typedef": TypeTypedef,
-	"if":      TypeIf,
-	"else":    TypeElse,
-	"for":     TypeFor,
-	"while":   TypeWhile,
-	"return":  TypeReturn,
-	"switch":  TypeSwitch,
-	"case":    TypeCase,
-	"default": TypeDefault,
-}
-
-// Operators maps operator characters/strings to their TokenType
-var Operators = map[string]Type{
-	"+":  TypePlus,
-	"-":  TypeMinus,
-	"*":  TypeStar,
-	"/":  TypeSlash,
-	"%":  TypePercent,
-	"==": TypeNotEqual,
-	"!=": TypeNotEqual,
-	"<":  TypeLess,
-	">":  TypeGreater,
-	"<=": TypeLessEqual,
-	">=": TypeGreaterEqual,
-	"=":  TypeAssign,
-	"+=": TypePlusAssign,
-	"-=": TypeMinusAssign,
-	"*=": TypeStarAssign,
-	"/=": TypeSlashAssign,
-	"%=": TypeModAssign,
-	"++": TypeIncDec,
-	"--": TypeIncDec,
-	"(":  TypeLParen,
-	")":  TypeRParen,
-	"{":  TypeLBrace,
-	"}":  TypeRBrace,
-	"[":  TypeLBracket,
-	"]":  TypeRBracket,
-	",":  TypeComma,
-	";":  TypeSemicolon,
-	":":  TypeColon,
-}
-
-// IsKeyword checks if the given string is a keyword
-func IsKeyword(s string) bool {
-	_, ok := Keywords[s]
-	return ok
-}
-
-// IsOperator checks if the given string is an operator
-func IsOperator(s string) bool {
-	_, ok := Operators[s]
-	return ok
-}
-
-// String returns a human-readable representation of the token type
-func (t Type) String() string {
-	return string(t)
-}
-
-// TypeFromString converts a string to a TokenType
-func TypeFromString(s string) (Type, bool) {
-	switch s {
-	case "VOID", "void":
-		return TypeVoid, true
-	case "INT", "int":
-		return TypeInt, true
-	case "STRUCT", "struct":
-		return TypeStruct, true
-	case "TYPEDEF", "typedef":
-		return TypeTypedef, true
-	case "IF", "if":
-		return TypeIf, true
-	case "ELSE", "else":
-		return TypeElse, true
-	case "FOR", "for":
-		return TypeFor, true
-	case "WHILE", "while":
-		return TypeWhile, true
-	case "RETURN", "return":
-		return TypeReturn, true
-	case "SWITCH", "switch":
-		return TypeSwitch, true
-	case "CASE", "case":
-		return TypeCase, true
-	case "DEFAULT", "default":
-		return TypeDefault, true
-	default:
-		return "", false
+// String returns a readable string representation of the token.
+func (t Token) String() string {
+	typeStr := t.Type.String()
+	if t.Literal == "" || t.Literal == typeStr {
+		return typeStr
 	}
+	return fmt.Sprintf("%s(%s)", typeStr, t.Literal)
 }
 
-// KeywordNames returns all keyword token types
-func KeywordNames() []Type {
-	names := make([]Type, 0, len(Keywords))
-	for _, t := range Keywords {
-		names = append(names, t)
+// IsKeyword reports whether the token is a keyword.
+func (t Token) IsKeyword() bool {
+	return IsKeyword(t.Type)
+}
+
+// IsLiteral reports whether the token is a literal.
+func (t Token) IsLiteral() bool {
+	return IsLiteral(t.Type)
+}
+
+// IsOperator reports whether the token is an operator or punctuator.
+func (t Token) IsOperator() bool {
+	return IsOperator(t.Type)
+}
+
+// Token type constants (C99 & Scintilla extensions)
+const (
+	// Special tokens
+	ILLEGAL TokenType = iota
+	EOF
+	COMMENT
+
+	// Identifiers and Literals
+	IDENT  // Identifiers (e.g. variable names, function names)
+	INT    // Integer literal (e.g. 42, 0xFF, 077)
+	FLOAT  // Floating-point literal (e.g. 3.14, 1e-10)
+	CHAR   // Character literal (e.g. 'a')
+	STRING // String literal (e.g. "hello")
+
+	// Operators and Punctuators
+	PLUS      // +
+	MINUS     // -
+	ASTERISK  // *
+	SLASH     // /
+	PERCENT   // %
+	INCREMENT // ++
+	DECREMENT // --
+
+	ASSIGN          // =
+	PLUS_ASSIGN     // +=
+	MINUS_ASSIGN    // -=
+	ASTERISK_ASSIGN // *=
+	SLASH_ASSIGN    // /=
+	PERCENT_ASSIGN  // %=
+
+	EQ     // ==
+	NOT_EQ // !=
+	LT     // <
+	GT     // >
+	LTE    // <=
+	GTE    // >=
+
+	LOGICAL_AND // &&
+	LOGICAL_OR  // ||
+	LOGICAL_NOT // !
+
+	BIT_AND // &
+	BIT_OR  // |
+	BIT_XOR // ^
+	BIT_NOT // ~
+	SHL     // <<
+	SHR     // >>
+
+	BIT_AND_ASSIGN // &=
+	BIT_OR_ASSIGN  // |=
+	BIT_XOR_ASSIGN // ^=
+	SHL_ASSIGN     // <<=
+	SHR_ASSIGN     // >>=
+
+	ARROW     // ->
+	DOT       // .
+	QUESTION  // ?
+	COLON     // :
+	SEMICOLON // ;
+	COMMA     // ,
+
+	LPAREN // (
+	RPAREN // )
+	LBRACK // [
+	RBRACK // ]
+	LBRACE // {
+	RBRACE // }
+
+	ELLIPSIS  // ...
+	HASH      // #
+	HASH_HASH // ##
+
+	// Keywords boundary marker
+	keywordBeg
+
+	// C99 Keywords
+	AUTO
+	BREAK
+	CASE
+	CHAR_KW
+	CONST
+	CONTINUE
+	DEFAULT
+	DO
+	DOUBLE
+	ELSE
+	ENUM
+	EXTERN
+	FLOAT_KW
+	FOR
+	GOTO
+	IF
+	INLINE
+	INT_KW
+	LONG
+	REGISTER
+	RESTRICT
+	RETURN
+	SHORT
+	SIGNED
+	SIZEOF
+	STATIC
+	STRUCT
+	SWITCH
+	TYPEDEF
+	UNION
+	UNSIGNED
+	VOID
+	VOLATILE
+	WHILE
+	BOOL      // _Bool
+	COMPLEX   // _Complex
+	IMAGINARY // _Imaginary
+
+	keywordEnd
+)
+
+var (
+	mu     sync.RWMutex
+	tokens = map[TokenType]string{
+		ILLEGAL: "ILLEGAL",
+		EOF:     "EOF",
+		COMMENT: "COMMENT",
+
+		IDENT:  "IDENT",
+		INT:    "INT",
+		FLOAT:  "FLOAT",
+		CHAR:   "CHAR",
+		STRING: "STRING",
+
+		PLUS:      "+",
+		MINUS:     "-",
+		ASTERISK:  "*",
+		SLASH:     "/",
+		PERCENT:   "%",
+		INCREMENT: "++",
+		DECREMENT: "--",
+
+		ASSIGN:          "=",
+		PLUS_ASSIGN:     "+=",
+		MINUS_ASSIGN:    "-=",
+		ASTERISK_ASSIGN: "*=",
+		SLASH_ASSIGN:    "/=",
+		PERCENT_ASSIGN:  "%=",
+
+		EQ:     "==",
+		NOT_EQ: "!=",
+		LT:     "<",
+		GT:     ">",
+		LTE:    "<=",
+		GTE:    ">=",
+
+		LOGICAL_AND: "&&",
+		LOGICAL_OR:  "||",
+		LOGICAL_NOT: "!",
+
+		BIT_AND: "&",
+		BIT_OR:  "|",
+		BIT_XOR: "^",
+		BIT_NOT: "~",
+		SHL:     "<<",
+		SHR:     ">>",
+
+		BIT_AND_ASSIGN: "&=",
+		BIT_OR_ASSIGN:  "|=",
+		BIT_XOR_ASSIGN: "^=",
+		SHL_ASSIGN:     "<<=",
+		SHR_ASSIGN:     ">>=",
+
+		ARROW:     "->",
+		DOT:       ".",
+		QUESTION:  "?",
+		COLON:     ":",
+		SEMICOLON: ";",
+		COMMA:     ",",
+
+		LPAREN: "(",
+		RPAREN: ")",
+		LBRACK: "[",
+		RBRACK: "]",
+		LBRACE: "{",
+		RBRACE: "}",
+
+		ELLIPSIS:  "...",
+		HASH:      "#",
+		HASH_HASH: "##",
+
+		AUTO:      "auto",
+		BREAK:     "break",
+		CASE:      "case",
+		CHAR_KW:   "char",
+		CONST:     "const",
+		CONTINUE:  "continue",
+		DEFAULT:   "default",
+		DO:        "do",
+		DOUBLE:    "double",
+		ELSE:      "else",
+		ENUM:      "enum",
+		EXTERN:    "extern",
+		FLOAT_KW:  "float",
+		FOR:       "for",
+		GOTO:      "goto",
+		IF:        "if",
+		INLINE:    "inline",
+		INT_KW:    "int",
+		LONG:      "long",
+		REGISTER:  "register",
+		RESTRICT:  "restrict",
+		RETURN:    "return",
+		SHORT:     "short",
+		SIGNED:    "signed",
+		SIZEOF:    "sizeof",
+		STATIC:    "static",
+		STRUCT:    "struct",
+		SWITCH:    "switch",
+		TYPEDEF:   "typedef",
+		UNION:     "union",
+		UNSIGNED:  "unsigned",
+		VOID:      "void",
+		VOLATILE:  "volatile",
+		WHILE:     "while",
+		BOOL:      "_Bool",
+		COMPLEX:   "_Complex",
+		IMAGINARY: "_Imaginary",
 	}
-	return names
-}
-
-// OperatorNames returns all operator token types
-func OperatorNames() []Type {
-	names := make([]Type, 0, len(Operators))
-	for _, t := range Operators {
-		names = append(names, t)
+	keywords = map[string]TokenType{
+		"auto":       AUTO,
+		"break":      BREAK,
+		"case":       CASE,
+		"char":       CHAR_KW,
+		"const":      CONST,
+		"continue":   CONTINUE,
+		"default":    DEFAULT,
+		"do":         DO,
+		"double":     DOUBLE,
+		"else":       ELSE,
+		"enum":       ENUM,
+		"extern":     EXTERN,
+		"float":      FLOAT_KW,
+		"for":        FOR,
+		"goto":       GOTO,
+		"if":         IF,
+		"inline":     INLINE,
+		"int":        INT_KW,
+		"long":       LONG,
+		"register":   REGISTER,
+		"restrict":   RESTRICT,
+		"return":     RETURN,
+		"short":      SHORT,
+		"signed":     SIGNED,
+		"sizeof":     SIZEOF,
+		"static":     STATIC,
+		"struct":     STRUCT,
+		"switch":     SWITCH,
+		"typedef":    TYPEDEF,
+		"union":      UNION,
+		"unsigned":   UNSIGNED,
+		"void":       VOID,
+		"volatile":   VOLATILE,
+		"while":      WHILE,
+		"_Bool":      BOOL,
+		"_Complex":   COMPLEX,
+		"_Imaginary": IMAGINARY,
 	}
-	return names
+)
+
+// String returns the string representation of the token type.
+func (tok TokenType) String() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if s, ok := tokens[tok]; ok {
+		return s
+	}
+	return fmt.Sprintf("TOKEN(%d)", tok)
 }
 
-// Validate checks if a token type is valid
-func (t Type) Validate() bool {
-	switch t {
-	case TypeVoid, TypeInt, TypeStruct, TypeTypedef,
-		TypeIf, TypeElse, TypeFor, TypeWhile,
-		TypeReturn, TypeSwitch, TypeCase, TypeDefault,
-		TypePlus, TypeMinus, TypeStar, TypeSlash,
-		TypePercent, TypeEqual, TypeNotEqual, TypeLess,
-		TypeGreater, TypeLessEqual, TypeGreaterEqual,
-		TypeAssign, TypePlusAssign, TypeMinusAssign,
-		TypeStarAssign, TypeSlashAssign, TypeModAssign,
-		TypeIncDec, TypeLParen, TypeRParen,
-		TypeLBrace, TypeRBrace, TypeLBracket, TypeRBracket,
-		TypeComma, TypeSemicolon, TypeColon,
-		TypeIdentifier, TypeInteger, TypeFloat,
-		TypeString, TypeCharacter,
-		TypeHash, TypeInclude, TypeIfdef, TypeIfndef,
-		TypeDefine, TypeIfToken, TypeElseToken, TypeEndif,
-		TypeEof, TypeError:
+// LookupIdent checks if an identifier is a keyword. If so, it returns the keyword's TokenType;
+// otherwise, it returns IDENT.
+func LookupIdent(ident string) TokenType {
+	mu.RLock()
+	defer mu.RUnlock()
+	if tok, ok := keywords[ident]; ok {
+		return tok
+	}
+	return IDENT
+}
+
+// IsKeyword reports whether the token type is a C99 keyword or registered keyword.
+func IsKeyword(tok TokenType) bool {
+	if tok > keywordBeg && tok < keywordEnd {
 		return true
-	default:
-		return false
 	}
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, k := range keywords {
+		if k == tok {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLiteral reports whether the token type is a literal (INT, FLOAT, CHAR, STRING).
+func IsLiteral(tok TokenType) bool {
+	return tok >= IDENT && tok <= STRING
+}
+
+// IsOperator reports whether the token type is an operator or punctuator.
+func IsOperator(tok TokenType) bool {
+	return tok > STRING && tok < keywordBeg
+}
+
+// RegisterKeyword registers a custom or extension keyword and its TokenType, enabling extensibility.
+func RegisterKeyword(name string, tok TokenType, stringRepr string) {
+	mu.Lock()
+	defer mu.Unlock()
+	keywords[name] = tok
+	tokens[tok] = stringRepr
 }
