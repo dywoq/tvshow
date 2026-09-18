@@ -19,35 +19,35 @@ const (
 	TypeDefault Type = "DEFAULT"
 
 	// Operator types
-	TypePlus      Type = "PLUS"
-	TypeMinus     Type = "MINUS"
-	TypeStar      Type = "STAR"
-	TypeSlash     Type = "SLASH"
-	TypePercent   Type = "PERCENT"
-	TypeEqual     Type = "EQUAL"
-	TypeNotEqual  Type = "NOT_EQUAL"
-	TypeLess      Type = "LESS"
-	TypeGreater   Type = "GREATER"
-	TypeLessEqual Type = "LESS_EQUAL"
+	TypePlus         Type = "PLUS"
+	TypeMinus        Type = "MINUS"
+	TypeStar         Type = "STAR"
+	TypeSlash        Type = "SLASH"
+	TypePercent      Type = "PERCENT"
+	TypeEqual        Type = "EQUAL"
+	TypeNotEqual     Type = "NOT_EQUAL"
+	TypeLess         Type = "LESS"
+	TypeGreater      Type = "GREATER"
+	TypeLessEqual    Type = "LESS_EQUAL"
 	TypeGreaterEqual Type = "GREATER_EQUAL"
-	TypeAssign    Type = "ASSIGN"
-	TypePlusAssign    Type = "PLUS_ASSIGN"
-	TypeMinusAssign   Type = "MINUS_ASSIGN"
-	TypeStarAssign    Type = "STAR_ASSIGN"
-	TypeSlashAssign   Type = "SLASH_ASSIGN"
-	TypeModAssign   Type = "MOD_ASSIGN"
-	TypeIncDec      Type = "INC_DEC"
+	TypeAssign       Type = "ASSIGN"
+	TypePlusAssign   Type = "PLUS_ASSIGN"
+	TypeMinusAssign  Type = "MINUS_ASSIGN"
+	TypeStarAssign   Type = "STAR_ASSIGN"
+	TypeSlashAssign  Type = "SLASH_ASSIGN"
+	TypeModAssign    Type = "MOD_ASSIGN"
+	TypeIncDec       Type = "INC_DEC"
 
 	// Punctuation types
-	TypeLParen   Type = "LPAREN"
-	TypeRParen   Type = "RPAREN"
-	TypeLBrace   Type = "LBRACE"
-	TypeRBrace   Type = "RBRACE"
-	TypeLBracket Type = "LBRACKET"
-	TypeRBracket Type = "RBRACKET"
-	TypeComma    Type = "COMMA"
+	TypeLParen    Type = "LPAREN"
+	TypeRParen    Type = "RPAREN"
+	TypeLBrace    Type = "LBRACE"
+	TypeRBrace    Type = "RBRACE"
+	TypeLBracket  Type = "LBRACKET"
+	TypeRBracket  Type = "RBRACKET"
+	TypeComma     Type = "COMMA"
 	TypeSemicolon Type = "SEMICOLON"
-	TypeColon    Type = "COLON"
+	TypeColon     Type = "COLON"
 
 	// Literal types
 	TypeIdentifier Type = "IDENTIFIER"
@@ -73,10 +73,10 @@ const (
 
 // Token represents a lexical token with its type, value, and position
 type Token struct {
-	Type    Type
-	Value   string
-	Line    int
-	Column  int
+	Type   Type
+	Value  string
+	Line   int
+	Column int
 }
 
 // Keywords maps lowercase strings to their TokenType
@@ -97,34 +97,34 @@ var Keywords = map[string]Type{
 
 // Operators maps operator characters/strings to their TokenType
 var Operators = map[string]Type{
-	"+":    TypePlus,
-	"-":    TypeMinus,
-	"*":    TypeStar,
-	"/":    TypeSlash,
-	"%":    TypePercent,
-	"==":   TypeNotEqual, // Actually this should be handled specially
-	"!=":   TypeNotEqual,
-	"<":    TypeLess,
-	">":    TypeGreater,
-	"<=":   TypeLessEqual,
-	">=":   TypeGreaterEqual,
-	"=":    TypeAssign,
-	"+=":   TypePlusAssign,
-	"-=":   TypeMinusAssign,
-	"*=":   TypeStarAssign,
-	"/=":   TypeSlashAssign,
-	"%=":   TypeModAssign,
-	"++":   TypeIncDec,
-	"--":   TypeIncDec,
-	"(":    TypeLParen,
-	")":    TypeRParen,
-	"{":    TypeLBrace,
-	"}":    TypeRBrace,
-	"[":    TypeLBracket,
-	"]":    TypeRBracket,
-	",":    TypeComma,
-	";":    TypeSemicolon,
-	":":    TypeColon,
+	"+":  TypePlus,
+	"-":  TypeMinus,
+	"*":  TypeStar,
+	"/":  TypeSlash,
+	"%":  TypePercent,
+	"==": TypeNotEqual,
+	"!=": TypeNotEqual,
+	"<":  TypeLess,
+	">":  TypeGreater,
+	"<=": TypeLessEqual,
+	">=": TypeGreaterEqual,
+	"=":  TypeAssign,
+	"+=": TypePlusAssign,
+	"-=": TypeMinusAssign,
+	"*=": TypeStarAssign,
+	"/=": TypeSlashAssign,
+	"%=": TypeModAssign,
+	"++": TypeIncDec,
+	"--": TypeIncDec,
+	"(":  TypeLParen,
+	")":  TypeRParen,
+	"{":  TypeLBrace,
+	"}":  TypeRBrace,
+	"[":  TypeLBracket,
+	"]":  TypeRBracket,
+	",":  TypeComma,
+	";":  TypeSemicolon,
+	":":  TypeColon,
 }
 
 // IsKeyword checks if the given string is a keyword
