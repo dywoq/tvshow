@@ -239,7 +239,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 
 | C99 Syntax Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
-| Keywords | **Supported** | All C99 keywords recognized (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extern`, `float`, `for`, `goto`, `if`, `inline`, `int`, `long`, `register`, `restrict`, `return`, `short`, `signed`, `sizeof`, `static`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `volatile`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Keywords | **Supported** | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extern`, `float`, `for`, `goto`, `if`, `inline`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `static`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
 | Comments | **Supported** | Line comments (`//`) and block comments (`/* ... */`). |
 | Numeric Literals | **Supported** | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`). |
 | Character & String Literals | **Supported** | Escaped sequences handled by lexer/interpreter. |
@@ -266,7 +266,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
 | Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
 | Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; runtime array indexing supported. |
-| Specifiers (`const`, `volatile`, `restrict`, `inline`, `register`, `auto`, `extern`, `static`) | **Partially Supported** | Parsed in type specifiers/declarators. Storage duration semantics (`static` persistence) and qualifiers are not enforced by VM execution. |
+| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Partially Supported** | Parsed in type specifiers/declarators. Storage duration semantics (`static` persistence) and qualifiers are not enforced by VM execution. Note: `register`, `volatile`, and `restrict` keywords have been removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
 
 ### 5. Expressions & Operators

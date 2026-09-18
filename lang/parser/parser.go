@@ -156,10 +156,10 @@ func (p *Parser) parseSpecs() ([]TypeSpec, error) {
 	return out, nil
 }
 func isQualifier(k token.TokenType) bool {
-	return k == token.CONST || k == token.VOLATILE || k == token.RESTRICT
+	return k == token.CONST
 }
 func isStorage(k token.TokenType) bool {
-	return k == token.TYPEDEF || k == token.EXTERN || k == token.STATIC || k == token.AUTO || k == token.REGISTER || k == token.INLINE
+	return k == token.TYPEDEF || k == token.EXTERN || k == token.STATIC || k == token.AUTO || k == token.INLINE
 }
 func isBuiltin(k token.TokenType) bool {
 	return k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY

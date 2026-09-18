@@ -150,8 +150,6 @@ const (
 	INLINE
 	INT_KW
 	LONG
-	REGISTER
-	RESTRICT
 	RETURN
 	SHORT
 	SIGNED
@@ -163,7 +161,6 @@ const (
 	UNION
 	UNSIGNED
 	VOID
-	VOLATILE
 	WHILE
 	BOOL      // _Bool
 	COMPLEX   // _Complex
@@ -261,8 +258,6 @@ var (
 		INLINE:    "inline",
 		INT_KW:    "int",
 		LONG:      "long",
-		REGISTER:  "register",
-		RESTRICT:  "restrict",
 		RETURN:    "return",
 		SHORT:     "short",
 		SIGNED:    "signed",
@@ -274,7 +269,6 @@ var (
 		UNION:     "union",
 		UNSIGNED:  "unsigned",
 		VOID:      "void",
-		VOLATILE:  "volatile",
 		WHILE:     "while",
 		BOOL:      "_Bool",
 		COMPLEX:   "_Complex",
@@ -300,8 +294,6 @@ var (
 		"inline":     INLINE,
 		"int":        INT_KW,
 		"long":       LONG,
-		"register":   REGISTER,
-		"restrict":   RESTRICT,
 		"return":     RETURN,
 		"short":      SHORT,
 		"signed":     SIGNED,
@@ -313,7 +305,6 @@ var (
 		"union":      UNION,
 		"unsigned":   UNSIGNED,
 		"void":       VOID,
-		"volatile":   VOLATILE,
 		"while":      WHILE,
 		"_Bool":      BOOL,
 		"_Complex":   COMPLEX,
