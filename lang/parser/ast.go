@@ -12,10 +12,7 @@ type Node interface {
 	Position() token.Position
 	String() string
 }
-import "tvshow/lang/token"
 
-// Node is implemented by every AST node. Pos is the first token belonging to it.
-type Node interface{ Position() token.Position }
 type Expression interface {
 	Node
 	expression()
@@ -155,7 +152,6 @@ func (n *ExprStmt) Position() token.Position {
 }
 func (*ExprStmt) statement()       {}
 func (n *ExprStmt) String() string { return nodeString(n.Expr) + ";" }
-func (*ExprStmt) statement() {}
 
 type IfStmt struct {
 	Token      token.Token
