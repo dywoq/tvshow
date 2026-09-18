@@ -1,4 +1,4 @@
-# Language
+# Scintilla
 
 ## Overview
 
@@ -63,5 +63,8 @@ typedef struct CalculationResult {
   - `token/` - Contains the token type definition.
   - `parser/` - Contains the parser implementation. Translates a sequence of tokens into the AST tree.
   - `lexer/` - Contains the lexer implementation.
-  - `interpreter/` - Contains the interpreter implementation. It must execute bytecode provided by the bytecode translator.
+  - `interpreter/` - Contains the interpreter implementation. It executes bytecode provided by
+    the bytecode translator.
   - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree into bytecode.
+  - `macro/` - Contains the macro expander. It takes a sequence of tokens and expands macro-function
+    calls, expressions etc.
