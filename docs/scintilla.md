@@ -9,7 +9,6 @@ Scintilla source files typically use the `.sc` extension. Scintilla code is tran
 
 ### Key Concepts & Differences from C99
 
-- **Memory Management:** Scintilla omits manual memory management (`malloc`/`free`), direct physical memory addresses, pointer arithmetic, and inline assembly. Pointer dereference (`*`) and address-of (`&`) syntax exist abstractly for variable reference and lvalue modification, but runtime memory is safely managed by the runtime environment.
 - **Runtime & Host Integration:** Guest runtime functionality relies on host-registered Go functions (`Interpreter.RegisterFunction`).
 - **Header & Source Files:** Direct header/source compilation model simplified for interpretation.
 - **Public & Modular Architecture:** Lexer, macro preprocessor, parser, semantic analyzer, bytecode translator, and interpreter are exposed as public Go packages designed for embedding, modularity, and reusability.
@@ -276,7 +275,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Primary Expressions & Identifiers | **Supported** | Identifiers, constants, string literals, parenthesized expressions. |
 | Postfix / Prefix (`++`, `--`) | **Supported** | Address-based update semantics (`Rotate` opcode preserves postfix value). |
 | Unary Operators (`+`, `-`, `!`, `~`) | **Supported** | Integer and floating-point unary evaluation. |
-| Address-Of (`&`) & Dereference (`*`) | **Supported** | Syntax and lvalue address resolution supported; raw physical memory addresses are omitted. |
+| Unary Address-Of (`&`) & Indirection (`*`) | **Supported** | Syntax and lvalue variable reference resolution supported. |
 | Binary Arithmetic & Bitwise Operators | **Supported** | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. |
 | Relational & Equality Operators | **Supported** | `<`, `>`, `<=`, `>=`, `==`, `!=`. |
 | Logical Operators (`&&`, `\|\|`) | **Supported** | Short-circuit evaluation retained via conditional jumps. |
