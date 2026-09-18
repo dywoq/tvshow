@@ -65,7 +65,10 @@ typedef struct CalculationResult {
   - `lexer/` - Contains the lexer implementation.
   - `interpreter/` - Contains the interpreter implementation. It executes bytecode provided by
     the bytecode translator.
-  - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree into bytecode.
+  - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree
+    into bytecode.
+    Notice that bytecode is not native machine code but the native language optimized specifically
+    for the interpreter.
   - `macro/` - Contains the macro expander. It takes a sequence of tokens and expands macro-function
     calls, expressions etc.
   - `semantic/` - Contains the implementation of the semantic analysis.
