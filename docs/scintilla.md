@@ -1,149 +1,290 @@
-# Scintilla
+# Scintilla Specification & Documentation
 
 ## Overview
 
-Scintilla is an interpreter that is inspired by the programming language C, specifically, standard C99.
-It is developed in Golang (its module is `lang/` at the root of folder). The differences are:
+Scintilla is a light-weight embeddable interpreter inspired by standard C (ISO/IEC 9899:1999, standard C99).
+It is implemented in Go under the `lang/` directory.
 
-- Lack of manual memory management, memory addresses and inline assembly code inserts.
+Scintilla source files typically use the `.sc` extension. Scintilla code is translated into a compact stack-machine bytecode format before execution, ensuring high performance and simple integration into Go applications.
 
-- The runtime is built by the guest code. Guest code's runtime relies on virtual machine's
-  built-in functions.
+### Key Concepts & Differences from C99
 
-- Source files are not used. The implementation is directly built into header files to simplify interpretation of Scintilla code.
+- **Memory Management:** Scintilla omits manual memory management (`malloc`/`free`), direct physical memory addresses, pointer arithmetic, and inline assembly. Pointer dereference (`*`) and address-of (`&`) syntax exist abstractly for variable reference and lvalue modification, but runtime memory is safely managed by the runtime environment.
+- **Runtime & Host Integration:** Guest runtime functionality relies on host-registered Go functions (`Interpreter.RegisterFunction`).
+- **Header & Source Files:** Direct header/source compilation model simplified for interpretation.
+- **Public & Modular Architecture:** Lexer, macro preprocessor, parser, semantic analyzer, bytecode translator, and interpreter are exposed as public Go packages designed for embedding, modularity, and reusability.
 
-Despite these features, Scintilla still shares the similar concepts with C.
+---
 
-Scintilla files use the `.sc` extension.
-
-Before interpreting Scintilla code, it is translated to bytecode for performance.
-
-## Example program
+## Example Program
 
 **main.sc**:
 
 ```c
-
 #include "def.sc"
 
+int Multiply(int a, int b) {
+	return a * b;
+}
+
 void Start() {
-	CalculationResult Result;
-	Result.A = 2;
-	Result.B = 2;
-	int Result = Result.A + Result.B;
+	CalculationResult result;
+	result.A = 2;
+	result.B = 3;
+	int product = Multiply(result.A, result.B);
 }
 ```
 
 **def.sc**:
 
 ```c
-
-
 typedef struct CalculationResult {
 	int A;
 	int B;
 } CalculationResult;
 ```
 
-## Goals
+---
 
-- Make language compliant with the C99 standard, including support of macro definitions, directives (#include, #ifndef etc.),
-  structs/typedefs, dynamic/fixed arrays, static functions, while still respecting the differences of Scintilla.
+## Architecture & Execution Pipeline
 
-- Allow to integrate external symbols (functions, variables, etc.) in external Golang code.
+Scintilla processes source code through a clean six-stage pipeline:
 
-- Make the Scintilla's lexer, parser, bytecode translator and bytecode interpreter public, modular, extendable and reusable
-  in external Golang code.
+```
+Source Code (.sc)
+      │
+      ▼
+┌───────────┐
+│   Lexer   │  (lang/lexer)  Converts raw text into a stream of tokens.
+└─────┬─────┘
+      │
+      ▼
+┌───────────┐
+│   Macro   │  (lang/macro)  Expands #define, #include, conditional directives (#if, #ifdef, etc.).
+└─────┬─────┘
+      │
+      ▼
+┌───────────┐
+│  Parser   │  (lang/parser) Translates tokens into an Abstract Syntax Tree (AST).
+└─────┬─────┘
+      │
+      ▼
+┌───────────┐
+│ Semantic  │  (lang/semantic) Validates identifiers, scopes, lvalues, break/continue/switch flow.
+└─────┬─────┘
+      │
+      ▼
+┌───────────┐
+│ Bytecode  │  (lang/bytecode) Lowers valid AST into stack-machine instructions.
+└─────┬─────┘
+      │
+      ▼
+┌───────────┐
+│Interpreter│  (lang/interpreter) Executes bytecode instructions & handles host Go calls.
+└───────────┘
+```
 
-- Provide debugger to track the interpreter's state, frame etc.
+---
 
-## Current C99 compliance
+## Language Components & Go API
 
-Scintilla is **not yet C99-compliant**.  C99 compliance is a goal, rather than
-a claim about the current implementation.  The lexer recognizes C99 keywords
-and operators, the parser currently handles declarations, function definitions,
-blocks, expressions, `if`, `switch`, `while`, `do`/`while`, `for`, labels and
-the `break`, `continue`, `return`, and `goto` statements.  The semantic pass
-checks identifier scopes, forward function calls, assignable assignment targets,
-and valid loop/switch control flow.
+The codebase is organized under `lang/` into seven distinct Go packages:
 
-The macro-expander supports object-like and function-like macros and the
-`#define`, `#undef`, conditional, and resolver-backed `#include` directives,
-but this is not yet the full C99 preprocessor.  The parser/type system does not
-yet translate all C99 syntax: casts, `sizeof`, compound literals, initializer
-designators, `_Static_assert`, full aggregate/array layout, type conversions,
-and most C99 constraints still need implementation.  The bytecode translator
-therefore preserves the semantics of the AST it accepts; it must not be read as
-claiming support for unimplemented C99 features.
+### 1. `lang/token`
+Defines lexical tokens, source positions (`Position`), keywords, and operators.
+- **Key Types & Functions:**
+  - `Position`: Represents `Filename`, `Line`, `Column`, and `Offset`.
+  - `Token`: Combines `Type`, `Literal` string, and `Pos`.
+  - `LookupIdent(literal string)`: Determines if an identifier is a C99 keyword.
+  - `RegisterKeyword(name, tok, stringRepr)`: Extends the keyword table dynamically.
 
-## Bytecode
+### 2. `lang/lexer`
+Performs lexical analysis on Scintilla source text.
+- **Features:**
+  - Standard C99 tokenization: Identifiers, Integer literals (decimal, octal `077`, hex `0xFF`), Floating-point literals (`3.14`, `1e-10`), Character (`'a'`), String (`"hello"`).
+  - Suffix support: Integer (`u`, `l`) and Float (`f`, `l`) suffixes.
+  - Skips whitespace and single-line (`//`) and block (`/* ... */`) comments.
+- **Key Functions:**
+  - `New(filename, input string) *Lexer`
+  - `NextToken() token.Token`
+  - `Tokens() []token.Token`
 
-`lang/bytecode` translates a semantically valid public parser AST to a typed
-stack-machine program.  `bytecode.Translate` first runs semantic analysis, so
-translation fails rather than emitting bytecode for unresolved names or invalid
-control-flow statements.  `Program.Globals` initializes file-scope variables
-and `Program.Functions` stores bodies in source order.  Literal operands are
-kept in their original source spelling; numeric parsing and C type conversion
-belong to the interpreter.
+### 3. `lang/macro`
+Token-based preprocessor supporting C99 preprocessor directives and macro expansion.
+- **Supported Directives & Features:**
+  - Macros: Object-like (`#define FOO 1`) and Function-like (`#define ADD(a, b) ((a)+(b))`).
+  - Variadic Macros: Support for `...` and `__VA_ARGS__`.
+  - Macro Operators: Stringification (`#`) and Token Pasting (`##`).
+  - Undefining: `#undef NAME`.
+  - File Inclusion: `#include "file.sc"` via a user-defined `IncludeResolver`.
+  - Conditionals: `#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`, and the `defined(NAME)` operator.
+  - Infinite expansion prevention via `MaxExpansion` limit.
+- **Key Functions:**
+  - `New() *Expander`
+  - `(e *Expander) Define(m Macro)`
+  - `(e *Expander) Undef(name string)`
+  - `(e *Expander) Expand(input []token.Token) ([]token.Token, error)`
 
-Every instruction carries its source position.  Jump operands are zero-based
-instruction indexes in the containing function or globals sequence.  Unless
-noted otherwise, an instruction takes operands from and pushes results onto the
-value stack.
+### 4. `lang/parser`
+Constructs an AST from preprocessed tokens.
+- **AST Node Types (`Node`, `Expression`, `Statement`, `Declaration`):**
+  - Declarations: `VarDecl`, `FunctionDecl`, `StaticAssertDecl`, `TypeSpec` (`struct`, `union`, `enum`, `typedef`).
+  - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`.
+  - Expressions: `IdentExpr`, `LiteralExpr`, `UnaryExpr`, `BinaryExpr`, `AssignExpr`, `ConditionalExpr` (`?:`), `CallExpr`, `IndexExpr` (`[]`), `MemberExpr` (`.` and `->`), `CastExpr`, `SizeofExpr`, `CommaExpr`, `CompoundLiteralExpr`, `InitializerListExpr`.
+- **Key Functions:**
+  - `Parse(tokens []token.Token) (*Program, error)`
 
-### Binary instruction view
+### 5. `lang/semantic`
+Validates AST semantics prior to bytecode translation.
+- **Validation Checks:**
+  - Identifier resolution and scope tracking (separate symbol tables for values and types).
+  - Function predeclarations and redefinition detection.
+  - Lvalue assignability verification for assignment targets (`=`, `+=`, etc.).
+  - Control-flow validity: `break` and `continue` inside loops, `break` inside switches, `case`/`default` inside switch statements, and `goto` target label resolution within functions.
+- **Key Functions:**
+  - `Analyze(program *parser.Program) error`
 
-`Instruction.MarshalBinary` (and its `Bytes` convenience alias) produces a
-stable, architecture-independent binary view suitable for bytecode files or
-transport to an interpreter.  Its layout is a one-byte format version (`1`), a
-one-byte opcode, a one-byte operand kind and operand payload, followed by the
-source position. Strings are UTF-8 bytes prefixed by a big-endian `uint32`; all
-integer operands and position numbers are big-endian signed 64-bit values. The
-three operand kinds are `0` (no operand), `1` (string), and `2` (integer).
-Unsupported opcodes or operand types return an error instead of producing an
-ambiguous encoding.
+### 6. `lang/bytecode`
+Translates semantically validated AST into stack-machine instructions. Runs semantic analysis automatically during translation.
+- **Key Features:**
+  - Lowers high-level control flow (`if`, `while`, `for`, `switch`, `goto`, `break`, `continue`) to resolved zero-based jump instruction indices.
+  - Retains left-to-right short-circuit evaluation for `&&`, `||`, and `?:`.
+  - Retains expression evaluation ordering and postfix increment/decrement semantics.
+  - Produces binary-encodable bytecode.
+- **Key Functions:**
+  - `Translate(program *parser.Program) (*Program, error)`
 
-| Instruction | Operand | Effect |
+### 7. `lang/interpreter`
+Stack-based virtual machine executing Scintilla bytecode programs.
+- **Key Features:**
+  - Executes bytecode instructions (`Execute`, `Run`).
+  - Maintained variable scopes (`globals` and call stack frames).
+  - Interoperability with host Go code via `RegisterFunction(name, fn)`.
+  - Binary instruction decoding and execution (`ExecuteBinary`, `DecodeInstruction`).
+- **Key Functions:**
+  - `New(program ...*bytecode.Program) *Interpreter`
+  - `(i *Interpreter) RegisterFunction(name string, fn Function)`
+  - `(i *Interpreter) Run(name string, args ...any) (any, error)`
+  - `(i *Interpreter) Execute(code []bytecode.Instruction) (any, error)`
+  - `InterpretBinary(code [][]byte) (any, error)`
+
+---
+
+## Bytecode & Binary Specification
+
+### Instruction Opcodes
+
+| Opcode | Operand | Effect / Description |
 | --- | --- | --- |
-| `declare` | variable name | Creates a variable in the current execution scope. |
-| `push_literal` | source literal | Pushes an integer, floating, character, or string literal. |
-| `load` / `address` | variable name | Pushes a variable's value / address. |
-| `address_index` | none | Replaces base and index with an address for `base[index]`. |
-| `address_member` | member name | Replaces an aggregate address with an address for its member. |
-| `load_indirect` / `store_indirect` | none | Loads through an address / stores a value through an address. `store_indirect` leaves the stored value on the stack. |
-| `unary` / `binary` | operator spelling | Applies a C operator represented by the current AST. |
-| `to_bool` | none | Replaces a value with C truth value `0` or `1`. |
-| `dup` / `pop` | none | Duplicates / discards the stack top. |
-| `rotate` | none | Rotates the top three values from `a, b, c` to `b, a, c`; used to retain the old value of a postfix update. |
-| `call` | argument count | Calls a function designator followed by that many already-evaluated arguments. |
-| `jump` | instruction index | Unconditional transfer. |
-| `jump_if_false` / `jump_if_true` | instruction index | Pops a condition and transfers when it is false / true. |
-| `return` | none | Returns the optional value currently on the stack; a bare return has no value. |
+| `declare` | `string` (var name) | Creates a variable cell in the current execution frame. |
+| `push_literal` | `string` (raw literal) | Parses and pushes an integer, floating-point, character, or string literal. |
+| `load` | `string` (var/func name) | Pushes the value of a variable or a function reference. |
+| `address` | `string` (var name) | Pushes an address handle referencing a named variable. |
+| `address_index` | none | Pops `index` and base array `address`/slice, pushes an address handle for `base[index]`. |
+| `address_member` | `string` (member) | Pops aggregate `address`, pushes an address handle for `aggregate.member`. |
+| `load_indirect` | none | Pops an address handle and pushes its contained value. |
+| `store_indirect` | none | Pops value and address handle, stores value to address, and leaves value on stack. |
+| `unary` | `string` (op symbol) | Applies unary operation (`!`, `~`, `+`, `-`). |
+| `to_bool` | none | Pops value and pushes boolean truth value `0` or `1`. |
+| `binary` | `string` (op symbol) | Pops right and left operands, applies binary operation (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&`, `\|`, `^`, `<<`, `>>`). |
+| `dup` | none | Duplicates top value on stack. |
+| `rotate` | none | Rotates top 3 stack values (`a, b, c` -> `b, a, c`); preserves old value in postfix updates. |
+| `pop` | none | Discards top value from stack. |
+| `call` | `int` (arg count) | Pops argument values and target function, executes call, pushes result. |
+| `jump` | `int` (instruction index) | Unconditional jump to target instruction index. |
+| `jump_if_false` | `int` (instruction index) | Pops condition; jumps if false (`0`). |
+| `jump_if_true` | `int` (instruction index) | Pops condition; jumps if true (non-zero). |
+| `return` | none | Returns current stack top value (or `nil` if stack is empty). |
 
-Assignments, compound assignments, prefix/postfix increment and decrement use
-the address instructions so that their C expression result is preserved.
-`&&`, `||`, and `?:` are emitted with conditional jumps and consequently retain
-their C left-to-right, short-circuit evaluation.  Loops, `switch`, `break`,
-`continue`, `goto`, and labels are lowered to resolved jump indexes.
+### Binary Format Specification (`Instruction.MarshalBinary`)
 
-## Go modules
+Instructions can be serialized into a portable, architecture-independent binary stream (`Version 1` layout):
 
-- `lang/`
-  - `token/` - Contains the token type definition.
-  - `parser/` - Contains the parser implementation. Translates a sequence of tokens into the AST tree.
-  - `lexer/` - Contains the lexer implementation.
-  - `interpreter/` - Contains the interpreter implementation. It executes bytecode provided by
-    the bytecode translator.
-  - `bytecode/` - Contains the bytecode translator implementation. It translates the AST tree
-    into bytecode.
-    Notice that bytecode is not native machine code but the native language optimized specifically
-    for the interpreter.
-  - `macro/` - Contains the macro expander. It takes a sequence of tokens and expands macro-function
-    calls, expressions etc.
-  - `semantic/` - Contains the implementation of the semantic analysis.
+1. **Header (3 bytes):**
+   - Byte 0: Format Version (`1`)
+   - Byte 1: Opcode numeric identifier (1-19)
+   - Byte 2: Operand Kind (`0` = None, `1` = String, `2` = Integer)
+2. **Operand Payload (variable):**
+   - Kind `0`: 0 bytes.
+   - Kind `1`: `uint32` Big-Endian string length + UTF-8 bytes.
+   - Kind `2`: `int64` Big-Endian signed integer value.
+3. **Source Position Payload:**
+   - Filename: `uint32` Big-Endian length + UTF-8 bytes.
+   - Line: `int64` Big-Endian signed integer.
+   - Column: `int64` Big-Endian signed integer.
+   - Offset: `int64` Big-Endian signed integer.
 
-## Before the code's interpretation
+---
 
-```
-lexer -> macro expander -> parser -> semantic analysis -> bytecode translator -> interpreter
-```
+## Detailed C99 Compliance Matrix
+
+Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semantics while maintaining a lightweight runtime execution model.
+
+### 1. Preprocessor Compliance
+
+| C99 Preprocessor Feature | Scintilla Status | Details & Notes |
+| --- | --- | --- |
+| `#define` (Object-like) | **Supported** | Full macro definition and expansion. |
+| `#define` (Function-like) | **Supported** | Parameterized macro expansion with argument substitution. |
+| Variadic Macros (`...`, `__VA_ARGS__`) | **Supported** | Variadic arguments in function-like macros. |
+| Stringification (`#`) & Token Pasting (`##`) | **Supported** | Converts tokens to string literals (`#`) and pastes tokens (`##`). |
+| `#undef` | **Supported** | Removes macro definition. |
+| `#include` | **Supported** | Resolver-backed custom header inclusion via `IncludeResolver`. |
+| Conditionals (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`) | **Supported** | Full conditional compilation evaluation. |
+| `defined` Operator | **Supported** | Evaluated during `#if`/`#elif` expansion (`defined(X)` or `defined X`). |
+| `#line`, `#error`, `#pragma` | *Not Implemented* | Directives are not yet recognized by the macro expander. |
+| Predefined Macros (`__LINE__`, `__FILE__`, etc.) | *Not Implemented* | Standard predefined macros are not automatically injected. |
+
+### 2. Lexical & Language Syntax Compliance
+
+| C99 Syntax Feature | Scintilla Status | Details & Notes |
+| --- | --- | --- |
+| Keywords | **Supported** | All C99 keywords recognized (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extern`, `float`, `for`, `goto`, `if`, `inline`, `int`, `long`, `register`, `restrict`, `return`, `short`, `signed`, `sizeof`, `static`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `volatile`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Comments | **Supported** | Line comments (`//`) and block comments (`/* ... */`). |
+| Numeric Literals | **Supported** | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`). |
+| Character & String Literals | **Supported** | Escaped sequences handled by lexer/interpreter. |
+| Trigraphs / Digraphs | *Not Implemented* | Alternative token representations are not supported. |
+
+### 3. Statements & Control Flow
+
+| C99 Statement Feature | Scintilla Status | Details & Notes |
+| --- | --- | --- |
+| Selection (`if`, `if`-`else`) | **Supported** | Translated to conditional jumps. |
+| `switch`, `case`, `default` | **Supported** | Full switch statement lowerings with fall-through support and case label validation. |
+| Iteration (`while`, `do`-`while`) | **Supported** | Translated to jump constructs. |
+| `for` Loops | **Supported** | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`). |
+| Jump Statements (`break`, `continue`) | **Supported** | Validated during semantic pass for enclosing loop/switch scopes. |
+| `goto` & Labeled Statements | **Supported** | Resolved to instruction jump targets in function context. |
+| `return` | **Supported** | Supports void and value returns. |
+
+### 4. Declarations & Types
+
+| C99 Type / Declaration Feature | Scintilla Status | Details & Notes |
+| --- | --- | --- |
+| Primitive Types (`int`, `float`, `char`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). |
+| Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing and runtime `map[string]any` field member access (`.` and `->`). |
+| Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
+| Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
+| Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; runtime array indexing supported. |
+| Specifiers (`const`, `volatile`, `restrict`, `inline`, `register`, `auto`, `extern`, `static`) | **Partially Supported** | Parsed in type specifiers/declarators. Storage duration semantics (`static` persistence) and qualifiers are not enforced by VM execution. |
+| Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
+
+### 5. Expressions & Operators
+
+| C99 Expression Feature | Scintilla Status | Details & Notes |
+| --- | --- | --- |
+| Primary Expressions & Identifiers | **Supported** | Identifiers, constants, string literals, parenthesized expressions. |
+| Postfix / Prefix (`++`, `--`) | **Supported** | Address-based update semantics (`Rotate` opcode preserves postfix value). |
+| Unary Operators (`+`, `-`, `!`, `~`) | **Supported** | Integer and floating-point unary evaluation. |
+| Address-Of (`&`) & Dereference (`*`) | **Supported** | Syntax and lvalue address resolution supported; raw physical memory addresses are omitted. |
+| Binary Arithmetic & Bitwise Operators | **Supported** | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. |
+| Relational & Equality Operators | **Supported** | `<`, `>`, `<=`, `>=`, `==`, `!=`. |
+| Logical Operators (`&&`, `\|\|`) | **Supported** | Short-circuit evaluation retained via conditional jumps. |
+| Conditional Operator (`?:`) | **Supported** | Short-circuit ternary evaluation retained via conditional jumps. |
+| Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. |
+| Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
+| Function Calls | **Supported** | Argument stack lowering for guest and host function invocations. |
+| Cast Expressions (`(type)expr`) | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not enforce dynamic cast conversions. |
+| `sizeof` Operator | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not yet evaluate expression sizes. |
+| Compound Literals & Initializer Lists | **Parsed Only** | Syntactically parsed in AST; array/struct initializer list lowering in expressions is not yet implemented in bytecode translator. |
+| `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |
