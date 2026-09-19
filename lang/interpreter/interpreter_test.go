@@ -142,3 +142,118 @@ func TestRunAddressOfCompoundLiteral(t *testing.T) {
 		t.Errorf("Run = %#v, want 42", got)
 	}
 }
+
+func TestHostFunctionCallFromGuest(t *testing.T) {
+	program := programFromSource(t, `
+		int add_host(int a, int b);
+		int Start() {
+			return add_host(15, 27);
+		}`)
+	interp := New(program)
+	interp.RegisterFunction("add_host", func(args []any) (any, error) {
+		a, err := integer(args[0])
+		if err != nil {
+			return nil, err
+		}
+		b, err := integer(args[1])
+		if err != nil {
+			return nil, err
+		}
+		return a + b, nil
+	})
+
+	got, err := interp.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}
+
+func TestHostCallsGuest(t *testing.T) {
+	program := programFromSource(t, `
+		int double_it(int n) { return n * 2; }
+		int call_host_proxy(int value);
+		int Start(int n) {
+			return call_host_proxy(n);
+		}`)
+	interp := New(program)
+	interp.RegisterFunction("call_host_proxy", func(args []any) (any, error) {
+		n := args[0]
+		return interp.Run("double_it", n)
+	})
+
+	got, err := interp.Run("Start", int64(21))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}
+
+func TestRunHostFunctionWithoutProgram(t *testing.T) {
+	interp := New()
+	interp.RegisterFunction("multiply", func(args []any) (any, error) {
+		a, err := integer(args[0])
+		if err != nil {
+			return nil, err
+		}
+		b, err := integer(args[1])
+		if err != nil {
+			return nil, err
+		}
+		return a * b, nil
+	})
+
+	got, err := interp.Run("multiply", 6, 7)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}
+
+func TestCallFunctionValueInVariable(t *testing.T) {
+	fn := Function(func(args []any) (any, error) {
+		a, _ := integer(args[0])
+		return a + 10, nil
+	})
+
+	program := programFromSource(t, `
+		int get_fn();
+		int Start() {
+			int f = get_fn();
+			return f(32);
+		}`)
+	interp := New(program)
+	interp.RegisterFunction("get_fn", func(args []any) (any, error) {
+		return fn, nil
+	})
+
+	got, err := interp.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}
+
+func TestHostGuestTypeConversions(t *testing.T) {
+	program := programFromSource(t, `
+		int sum(int a, int b) { return a + b; }
+	`)
+	interp := New(program)
+
+	// Call guest function with various Go integer types (int, int32, int64)
+	got, err := interp.Run("sum", int(10), int32(20))
+	if err != nil {
+		t.Fatalf("Run with int/int32: %v", err)
+	}
+	if got != int64(30) {
+		t.Errorf("sum = %#v, want 30", got)
+	}
+}

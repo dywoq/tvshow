@@ -89,10 +89,7 @@ func (i *Interpreter) ExecuteBinary(code [][]byte) (any, error) {
 
 // Run initializes program globals once and calls a named translated function.
 func (i *Interpreter) Run(name string, args ...any) (any, error) {
-	if i.program == nil {
-		return nil, Error{Message: "cannot run a function without a program"}
-	}
-	if !i.initialized {
+	if i.program != nil && !i.initialized {
 		if _, err := i.execute(i.program.Globals, nil, &i.globals); err != nil {
 			return nil, err
 		}
@@ -140,14 +137,18 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 			if !ok {
 				return fail("load requires a variable name")
 			}
-			if c, ok := local.vars[name]; ok {
+			if c, ok := local.vars[name]; ok && c.value != nil {
 				stack = append(stack, c.value)
-			} else if c, ok := i.globals.vars[name]; ok {
+			} else if c, ok := i.globals.vars[name]; ok && c.value != nil {
 				stack = append(stack, c.value)
 			} else if _, ok := i.functions[name]; ok {
 				stack = append(stack, functionRef{name})
 			} else if _, ok := i.host[name]; ok {
 				stack = append(stack, functionRef{name})
+			} else if c, ok := local.vars[name]; ok {
+				stack = append(stack, c.value)
+			} else if c, ok := i.globals.vars[name]; ok {
+				stack = append(stack, c.value)
 			} else {
 				return fail("undefined name " + name)
 			}
@@ -246,13 +247,27 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 			argv := append([]any(nil), stack[start:]...)
 			target := stack[start-1]
 			stack = stack[:start-1]
-			ref, ok := target.(functionRef)
-			if !ok {
+			var v any
+			var e error
+			switch fn := target.(type) {
+			case functionRef:
+				v, e = i.call(fn, argv)
+			case Function:
+				v, e = fn(argv)
+			case func([]any) (any, error):
+				v, e = fn(argv)
+			case string:
+				v, e = i.call(functionRef{fn}, argv)
+			case bytecode.Function:
+				v, e = i.call(functionRef{fn.Name}, argv)
+			default:
 				return fail("call requires a function")
 			}
-			v, e := i.call(ref, argv)
 			if e != nil {
-				return nil, e
+				if err, ok := e.(Error); ok {
+					return nil, err
+				}
+				return fail(e.Error())
 			}
 			stack = append(stack, v)
 		case bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue:
@@ -383,9 +398,17 @@ func truth(v any) bool {
 	switch x := v.(type) {
 	case nil:
 		return false
+	case bool:
+		return x
 	case int64:
 		return x != 0
+	case int:
+		return x != 0
+	case int32:
+		return x != 0
 	case float64:
+		return x != 0
+	case float32:
 		return x != 0
 	case string:
 		return x != ""
@@ -449,11 +472,36 @@ func integer(v any) (int64, error) {
 	if v == nil {
 		return 0, nil
 	}
-	n, ok := v.(int64)
-	if !ok {
+	switch x := v.(type) {
+	case int64:
+		return x, nil
+	case int:
+		return int64(x), nil
+	case int32:
+		return int64(x), nil
+	case int16:
+		return int64(x), nil
+	case int8:
+		return int64(x), nil
+	case uint:
+		return int64(x), nil
+	case uint64:
+		return int64(x), nil
+	case uint32:
+		return int64(x), nil
+	case uint16:
+		return int64(x), nil
+	case uint8:
+		return int64(x), nil
+	case float64:
+		return int64(x), nil
+	case float32:
+		return int64(x), nil
+	case bool:
+		return boolInt(x), nil
+	default:
 		return 0, fmt.Errorf("integer operand required")
 	}
-	return n, nil
 }
 func operation(op any, l, r any) (any, error) {
 	s, ok := op.(string)
@@ -551,7 +599,27 @@ func asFloat(v any) (float64, bool) {
 		return 0, true
 	case float64:
 		return n, true
+	case float32:
+		return float64(n), true
 	case int64:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint8:
 		return float64(n), true
 	}
 	return 0, false
