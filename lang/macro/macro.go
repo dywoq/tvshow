@@ -180,6 +180,14 @@ func (e *Expander) directives(in []token.Token, limit int) ([]token.Token, error
 				}
 				out = append(out, expanded...)
 			}
+		case "error":
+			if enabled() {
+				msg := stringify(args)
+				if msg != "" {
+					return nil, fmt.Errorf("%s: #error %s", pos.String(), msg)
+				}
+				return nil, fmt.Errorf("%s: #error", pos.String())
+			}
 		default:
 			if enabled() {
 				return nil, fmt.Errorf("%s: unknown directive #%s", pos.String(), name)

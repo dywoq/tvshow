@@ -36,6 +36,25 @@ wrong
 	}
 }
 
+func TestErrorDirective(t *testing.T) {
+	e := New()
+	_, err := e.Expand(source("#error Something went wrong"))
+	if err == nil || err.Error() != "test.sc:1:1: #error Something went wrong" {
+		t.Errorf("unexpected error for #error with message: %v", err)
+	}
+
+	_, err = e.Expand(source("#error"))
+	if err == nil || err.Error() != "test.sc:1:1: #error" {
+		t.Errorf("unexpected error for empty #error: %v", err)
+	}
+
+	// In disabled block, #error should be ignored
+	_, err = e.Expand(source("#if 0\n#error should not fire\n#endif\nint x = 5;"))
+	if err != nil {
+		t.Fatalf("expected no error in disabled block, got: %v", err)
+	}
+}
+
 func TestStringifyPasteVariadicAndInclude(t *testing.T) {
 	e := New()
 	e.Include = func(name string, _ token.Position) ([]token.Token, error) {

@@ -53,6 +53,9 @@ func TestLookupIdent(t *testing.T) {
 		{"register", IDENT},
 		{"volatile", IDENT},
 		{"restrict", IDENT},
+		{"static", IDENT},
+		{"extern", IDENT},
+		{"inline", IDENT},
 		{"CalculationResult", IDENT},
 		{"myVariable", IDENT},
 	}
