@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -549,6 +550,9 @@ func unary(op any, v any) (any, error) {
 		return nil, fmt.Errorf("unary requires an operator")
 	}
 	if s == "sizeof" {
+		if ad, ok := v.(address); ok {
+			v = ad.get()
+		}
 		if str, ok := v.(string); ok {
 			return int64(len(str)), nil
 		}
@@ -560,6 +564,10 @@ func unary(op any, v any) (any, error) {
 		}
 		if v == nil {
 			return int64(0), nil
+		}
+		val := reflect.ValueOf(v)
+		if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
+			return int64(val.Len()), nil
 		}
 		return int64(8), nil
 	}

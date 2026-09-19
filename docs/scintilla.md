@@ -349,6 +349,6 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
 | Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations. |
 | Cast Expressions (`(type)expr`) | **Supported** | Parsed and type-checked during semantic analysis. |
-| `sizeof` Operator | **Supported** | Evaluates string length for string operands or byte size for type specifiers / expressions. |
+| `sizeof` Operator | **Supported** | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions. |
 | Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
 | `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |
