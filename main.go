@@ -9,6 +9,6 @@ import (
 func main() {
 	err := game.Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start the game: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
 }

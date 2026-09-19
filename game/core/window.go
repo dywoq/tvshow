@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -32,7 +34,10 @@ func (e *ebitenWindow) Update() error {
 		Window: e.w,
 	}
 	for _, ex := range e.w.Executors {
-		ex(params)
+		err := ex(params)
+		if err != nil {
+			return fmt.Errorf("one of the executors failed: %v", err)
+		}
 	}
 	return nil
 }

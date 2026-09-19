@@ -27,10 +27,13 @@ func InitializeProgram() error {
 		return fmt.Errorf("initializing interpreter failed: %v", err)
 	}
 	programInterpreter = got
+	programInterpreter.RegisterFunction("print", func(v any) {
+		fmt.Printf("%v\n", v)
+	})
 	return nil
 }
 
 func ProgramExecutor(params *ExecutorParams) error {
-	programInterpreter.Run("game_loop")
-	return nil
+	_, err := programInterpreter.Run("game_frame")
+	return err
 }
