@@ -15,11 +15,6 @@ type Window struct {
 	Executors []Executor
 }
 
-// ExecutorParams provides necessary information to an executor function.
-type ExecutorParams struct {
-	Window *Window
-}
-
 // Executor is a function that is executed every frame.
 // It can be used to run guest program code, calculate coordinates and etc.
 // related to game logic.
