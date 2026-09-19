@@ -1,6 +1,8 @@
 package main
 
-import "tvshow/game/core"
+import (
+	"tvshow/game/core"
+)
 
 func main() {
 	w := &core.Window{
