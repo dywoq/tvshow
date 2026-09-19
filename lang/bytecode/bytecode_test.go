@@ -222,6 +222,59 @@ func TestTranslateShortCircuitAndGlobals(t *testing.T) {
 	}
 }
 
+func TestTranslateExceptionOpcodes(t *testing.T) {
+	source := `
+		int Divide(int a, int b) {
+			if (b == 0) {
+				throw "division by zero";
+			}
+			return a / b;
+		}
+		void Start() {
+			try {
+				int res = Divide(10, 0);
+			} catch (string err) {
+				string msg = err;
+			}
+		}`
+	program := translateSource(t, source)
+	if len(program.Functions) != 2 {
+		t.Fatalf("functions = %d, want 2", len(program.Functions))
+	}
+	divideFn := program.Functions[0]
+	seenDivide := map[Opcode]bool{}
+	for _, ins := range divideFn.Code {
+		seenDivide[ins.Opcode] = true
+	}
+	if !seenDivide[Throw] {
+		t.Errorf("missing Throw opcode in Divide function")
+	}
+
+	startFn := program.Functions[1]
+	seenStart := map[Opcode]bool{}
+	for _, ins := range startFn.Code {
+		seenStart[ins.Opcode] = true
+	}
+	for _, opcode := range []Opcode{PushCatch, PopCatch, Swap, Declare, Address, StoreIndirect} {
+		if !seenStart[opcode] {
+			t.Errorf("missing %s opcode in Start function", opcode)
+		}
+	}
+
+	// Test binary serialization of program containing exception opcodes
+	data, err := program.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+	decoded, err := DecodeProgram(data)
+	if err != nil {
+		t.Fatalf("DecodeProgram failed: %v", err)
+	}
+	if len(decoded.Functions) != 2 {
+		t.Fatalf("decoded functions = %d, want 2", len(decoded.Functions))
+	}
+}
+
 func TestTranslateStructArrayMembers(t *testing.T) {
 	source := `
 		typedef struct _VECTORSTR {

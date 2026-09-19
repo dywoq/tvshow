@@ -90,6 +90,50 @@ int get_len(string s) {
 	}
 }
 
+func TestParseTryCatchAndThrow(t *testing.T) {
+	input := `int Divide(int A, int B) {
+      if (B == 0) {
+            throw "division by zero is not allowed";
+      }
+      return A + B;
+}
+
+void Start() {
+     try {
+            int Result = Divide(10, 0);
+     } catch (string exception) {
+            int err = 1;
+     }
+}`
+	program, err := Parse(lexer.New("exception.sc", input).Tokens())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(program.Declarations) != 2 {
+		t.Fatalf("declarations = %d, want 2", len(program.Declarations))
+	}
+	fn1 := program.Declarations[0].(*FunctionDecl)
+	ifStmt := fn1.Body.Items[0].(*IfStmt)
+	ifBlock := ifStmt.Then.(*BlockStmt)
+	throwStmt, ok := ifBlock.Items[0].(*ThrowStmt)
+	if !ok {
+		t.Fatalf("expected ThrowStmt, got %T", ifBlock.Items[0])
+	}
+	lit := throwStmt.Value.(*LiteralExpr)
+	if lit.Token.Literal != `division by zero is not allowed` && lit.Token.Literal != `"division by zero is not allowed"` {
+		t.Errorf("unexpected throw message: %s", lit.Token.Literal)
+	}
+
+	fn2 := program.Declarations[1].(*FunctionDecl)
+	tryStmt, ok := fn2.Body.Items[0].(*TryCatchStmt)
+	if !ok {
+		t.Fatalf("expected TryCatchStmt, got %T", fn2.Body.Items[0])
+	}
+	if tryStmt.Catch == nil || tryStmt.Catch.Declarator.Name.Literal != "exception" {
+		t.Errorf("unexpected catch block: %#v", tryStmt.Catch)
+	}
+}
+
 func TestNodesImplementStringer(t *testing.T) {
 	var _ Node = &Program{}
 	var _ Node = &VarDecl{Specs: []TypeSpec{{Token: token.Token{}}}}

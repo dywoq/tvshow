@@ -130,7 +130,7 @@ Token-based preprocessor supporting C99 preprocessor directives and macro expans
 Constructs an AST from preprocessed tokens.
 - **AST Node Types (`Node`, `Expression`, `Statement`, `Declaration`):**
   - Declarations: `VarDecl`, `FunctionDecl`, `StaticAssertDecl`, `TypeSpec` (`struct`, `union`, `enum`, `typedef`).
-  - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`.
+  - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`, `ThrowStmt`, `TryCatchStmt`.
   - Expressions: `IdentExpr`, `LiteralExpr`, `UnaryExpr`, `BinaryExpr`, `AssignExpr`, `ConditionalExpr` (`?:`), `CallExpr`, `IndexExpr` (`[]`), `MemberExpr` (`.` and `->`), `CastExpr`, `SizeofExpr`, `CommaExpr`, `CompoundLiteralExpr`, `InitializerListExpr`.
 - **Key Functions:**
   - `Parse(tokens []token.Token) (*Program, error)`
@@ -146,6 +146,7 @@ Validates AST semantics, types, and qualifiers prior to bytecode translation.
   - **Return Statements:** Enforces that `void` functions do not return values, non-void functions return a value, and return expression types match function return types.
   - **Expression & Operator Type Checks:** Enforces operand constraints for bitwise operators (integers only), unary operators, binary arithmetic, switch statement quantities, and condition expressions.
   - **Control Flow & Scopes:** Validates `break`/`continue` within loops/switches, `case`/`default` inside switch statements, and `goto` label targets.
+  - **Exception Checks:** Validates that `throw` expressions evaluate to string exceptions. Non-string types (integers, floats, structs, arrays, etc.) are rejected at compile time. Validates that `catch` block parameter types are `string`.
 - **Key Functions:**
   - `Analyze(program *parser.Program) error`
 
@@ -171,6 +172,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - Executes bytecode instructions (`Execute`, `Run`).
   - Maintained variable scopes (`globals` and call stack frames).
   - Interoperability with host Go code via `RegisterFunction(name, fn)`.
+  - Native exception system supporting guest `try ... catch` blocks and host-level uncaught exception handlers (`SetExceptionHandler`).
   - Binary instruction decoding and execution (`ExecuteBinary`, `DecodeInstruction`).
   - Built-in interactive debugger (`Debugger`) providing breakpoints, stepping modes, execution control, and runtime state inspection.
 - **Key Functions & Types:**
@@ -182,6 +184,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - `(i *Interpreter) ExecuteBinary(code [][]byte) (any, error)`
   - `(i *Interpreter) ToFunction(v any) (Function, error)`
   - `(i *Interpreter) CallFunc(fn any, args ...any) (any, error)`
+  - `(i *Interpreter) SetExceptionHandler(handler ExceptionHandler)`
   - `(i *Interpreter) SetDebugger(d *Debugger)`
   - `InterpretBinary(code [][]byte) (any, error)`
   - `InterpretProgramBinary(programData []byte, funcName string, args ...any) (any, error)`
@@ -224,6 +227,10 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
 | `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
 | `convert` | `string` (target type) | Pops value, converts value to specified target type (or reports a type conversion error if types do not match), and pushes result onto stack. |
+| `throw` | none | Pops exception string from stack and initiates exception unwinding. |
+| `push_catch` | `int` (instruction index) | Registers a catch handler target for the current execution frame. |
+| `pop_catch` | none | Removes the top catch handler from the current execution frame. |
+| `swap` | none | Swaps top two values on the operand stack. |
 
 ---
 
@@ -279,6 +286,59 @@ interp.RegisterFunction("ApplyHost", func(op func(int, int) int, a, b int) int {
     return op(a, b) // Executes guest function from Go host
 })
 ```
+
+---
+
+## Exception Handling (`try`, `catch`, `throw`)
+
+Scintilla provides native bytecode-level exception handling using `throw`, `try`, and `catch` constructs.
+
+### 1. Rules & Syntax
+
+- **String Exceptions Only:** Exceptions in Scintilla are string values. Throwing primitive non-string types (`int`, `float`, `char`, etc.) or user-defined types (`struct`) is rejected by semantic analysis at compile time.
+- **Catch Clause:** The `catch` statement accepts a `string` parameter (e.g. `catch (string exception)`).
+- **Execution Unwinding:** Executing `throw` terminates execution of the current statement sequence or function, unwinding call frames until a matching guest `try ... catch` block is found. If no guest catch block catches the exception, host code's exception handler is invoked.
+
+### 2. Example Program
+
+```c
+int Divide(int A, int B) {
+      if (B == 0) {
+            throw "division by zero is not allowed";
+            // another return here is extra.
+      }
+      return A / B;
+}
+
+void Start() {
+     try {
+            int Result = Divide(10, 0);
+            // Do something with result
+     } catch (string exception) {
+            // Do something with exception
+     }
+}
+```
+
+### 3. Host Exception Handler (`SetExceptionHandler`)
+
+Host code can register an exception handler to receive full exception details (`ExceptionInfo`) when guest code produces an uncaught exception:
+
+```go
+interp := interpreter.New(program)
+interp.SetExceptionHandler(func(info interpreter.ExceptionInfo) {
+    fmt.Printf("Uncaught exception: %s in function %s at %s\n",
+        info.Message, info.FuncName, info.Position)
+})
+
+result, err := interp.Run("Start")
+```
+
+`ExceptionInfo` contains:
+- `Message`: The thrown exception string.
+- `Position`: The source location (`token.Position`) where `throw` occurred.
+- `FuncName`: The function name where `throw` occurred.
+- `CallStack`: The slice of active stack frames (`[]StackFrame`) captured at throw time.
 
 ---
 
@@ -401,6 +461,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Iteration (`while`, `do`-`while`) | **Supported** | Translated to jump constructs. |
 | `for` Loops | **Supported** | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`). |
 | Jump Statements (`break`, `continue`, `return`) | **Supported** | Validated during semantic pass for enclosing loop/switch scopes, void vs non-void returns, and return expression type compatibility. |
+| Exception Statements (`throw`, `try`-`catch`) | **Supported** | Native bytecode-level exception handling. Semantic analyzer verifies string exception types for throw expressions and catch parameters. Host code can register `SetExceptionHandler`. |
 | `goto` & Labeled Statements | **Supported** | Resolved to instruction jump targets in function context. |
 | `return` | **Supported** | Enforces void vs non-void function return value rules and type compatibility. |
 

@@ -515,6 +515,140 @@ func TestRunProgramFromBinary(t *testing.T) {
 	}
 }
 
+func TestExceptionsInInterpreter(t *testing.T) {
+	// Test guest try/catch block catching exception thrown by another function
+	source := `
+		int Divide(int A, int B) {
+			if (B == 0) {
+				throw "division by zero is not allowed";
+			}
+			return A / B;
+		}
+
+		int Start() {
+			try {
+				int Result = Divide(10, 0);
+				return Result;
+			} catch (string exception) {
+				if (exception == "division by zero is not allowed") {
+					return 100;
+				}
+				return 50;
+			}
+		}`
+	program := programFromSource(t, source)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run error = %v", err)
+	}
+	if got != int64(100) {
+		t.Errorf("Run = %#v, want 100", got)
+	}
+}
+
+func TestUncaughtExceptionCallsHostHandler(t *testing.T) {
+	source := `
+		int Divide(int A, int B) {
+			if (B == 0) {
+				throw "division by zero is not allowed";
+			}
+			return A / B;
+		}
+
+		int Start() {
+			return Divide(10, 0);
+		}`
+	program := programFromSource(t, source)
+	interp := New(program)
+
+	var hostCalled bool
+	var capturedExc ExceptionInfo
+
+	interp.SetExceptionHandler(func(info ExceptionInfo) {
+		hostCalled = true
+		capturedExc = info
+	})
+
+	got, err := interp.Run("Start")
+	if err == nil {
+		t.Fatalf("expected uncaught exception error, got result %#v", got)
+	}
+	if !hostCalled {
+		t.Errorf("expected host exception handler to be called")
+	}
+	if capturedExc.Message != "division by zero is not allowed" {
+		t.Errorf("capturedExc message = %q, want %q", capturedExc.Message, "division by zero is not allowed")
+	}
+	if capturedExc.FuncName != "Divide" {
+		t.Errorf("capturedExc FuncName = %q, want %q", capturedExc.FuncName, "Divide")
+	}
+	if len(capturedExc.CallStack) == 0 {
+		t.Errorf("expected call stack in ExceptionInfo to be non-empty")
+	}
+}
+
+func TestNestedTryCatchAndRethrow(t *testing.T) {
+	source := `
+		int Start() {
+			try {
+				try {
+					throw "inner exception";
+				} catch (string e1) {
+					throw e1 + " -> outer exception";
+				}
+			} catch (string e2) {
+				if (e2 == "inner exception -> outer exception") {
+					return 42;
+				}
+			}
+			return 0;
+		}`
+	program := programFromSource(t, source)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(42) {
+		t.Errorf("Run = %#v, want 42", got)
+	}
+}
+
+func TestExceptionInBinaryProgram(t *testing.T) {
+	source := `
+		int Divide(int A, int B) {
+			if (B == 0) {
+				throw "division by zero";
+			}
+			return A / B;
+		}
+
+		int Start() {
+			try {
+				return Divide(10, 0);
+			} catch (string err) {
+				return 999;
+			}
+		}`
+	program := programFromSource(t, source)
+	data, err := program.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+
+	interp, err := NewFromBinary(data)
+	if err != nil {
+		t.Fatalf("NewFromBinary: %v", err)
+	}
+
+	got, err := interp.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(999) {
+		t.Errorf("Run = %#v, want 999", got)
+	}
+}
+
 func TestNewFromBinaryRejectsCorruptedData(t *testing.T) {
 	_, err := NewFromBinary([]byte{0x99, 0x00})
 	if err == nil {

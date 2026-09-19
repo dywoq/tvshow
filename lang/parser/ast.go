@@ -232,6 +232,49 @@ func (n *JumpStmt) String() string {
 	return n.Token.Literal + ";"
 }
 
+type ThrowStmt struct {
+	Token token.Token
+	Value Expression
+	Semi  token.Token
+}
+
+func (n *ThrowStmt) Position() token.Position { return n.Token.Pos }
+func (*ThrowStmt) statement()                 {}
+func (n *ThrowStmt) String() string {
+	return "throw " + nodeString(n.Value) + ";"
+}
+
+type CatchBlock struct {
+	Token      token.Token
+	VarType    []TypeSpec
+	Declarator Declarator
+	Body       *BlockStmt
+}
+
+func (n *CatchBlock) Position() token.Position { return n.Token.Pos }
+func (n *CatchBlock) String() string {
+	declStr := typeSpecsString(n.VarType)
+	if n.Declarator.Name.Literal != "" {
+		declStr += " " + n.Declarator.Name.Literal
+	}
+	return "catch (" + declStr + ") " + nodeString(n.Body)
+}
+
+type TryCatchStmt struct {
+	Token token.Token
+	Body  *BlockStmt
+	Catch *CatchBlock
+}
+
+func (n *TryCatchStmt) Position() token.Position { return n.Token.Pos }
+func (*TryCatchStmt) statement()                 {}
+func (n *TryCatchStmt) String() string {
+	if n.Catch != nil {
+		return "try " + nodeString(n.Body) + " " + nodeString(n.Catch)
+	}
+	return "try " + nodeString(n.Body)
+}
+
 type LabelStmt struct {
 	Name      token.Token
 	Colon     token.Token

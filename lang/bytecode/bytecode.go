@@ -42,6 +42,10 @@ const (
 	MakeArray     Opcode = "make_array"
 	MakeStruct    Opcode = "make_struct"
 	Convert       Opcode = "convert"
+	Throw         Opcode = "throw"
+	PushCatch     Opcode = "push_catch"
+	PopCatch      Opcode = "pop_catch"
+	Swap          Opcode = "swap"
 )
 
 // Instruction is one bytecode operation. Operand is a string for names and
@@ -172,6 +176,7 @@ func decodeOpcode(n byte) (Opcode, bool) {
 		"", Declare, PushLiteral, Load, Address, AddressIndex, AddressMember,
 		LoadIndirect, StoreIndirect, Unary, ToBool, Binary, Dup, Rotate, Pop,
 		Call, Jump, JumpIfFalse, JumpIfTrue, Return, MakeArray, MakeStruct, Convert,
+		Throw, PushCatch, PopCatch, Swap,
 	}
 	if int(n) >= len(ops) || n == 0 {
 		return "", false
@@ -263,6 +268,14 @@ func binaryOpcode(opcode Opcode) (byte, bool) {
 		return 21, true
 	case Convert:
 		return 22, true
+	case Throw:
+		return 23, true
+	case PushCatch:
+		return 24, true
+	case PopCatch:
+		return 25, true
+	case Swap:
+		return 26, true
 	default:
 		return 0, false
 	}
@@ -926,6 +939,36 @@ func (c *compiler) statement(s parser.Statement) error {
 		case token.GOTO:
 			c.jump(Jump, "user."+s.Label.Literal, s.Token.Pos)
 		}
+	case *parser.ThrowStmt:
+		if err := c.expr(s.Value); err != nil {
+			return err
+		}
+		c.emit(Throw, nil, s.Token.Pos)
+	case *parser.TryCatchStmt:
+		catchLabel, endLabel := c.name("try.catch"), c.name("try.end")
+		c.jump(PushCatch, catchLabel, s.Token.Pos)
+		if err := c.statement(s.Body); err != nil {
+			return err
+		}
+		c.emit(PopCatch, nil, s.Token.Pos)
+		c.jump(Jump, endLabel, s.Token.Pos)
+		c.label(catchLabel)
+		if s.Catch != nil {
+			if s.Catch.Declarator.Name.Literal != "" {
+				varName := s.Catch.Declarator.Name.Literal
+				c.emit(Declare, varName, s.Catch.Declarator.Name.Pos)
+				c.emit(Address, varName, s.Catch.Declarator.Name.Pos)
+				c.emit(Swap, nil, s.Catch.Declarator.Name.Pos)
+				c.emit(StoreIndirect, nil, s.Catch.Declarator.Name.Pos)
+				c.emit(Pop, nil, s.Catch.Declarator.Name.Pos)
+			} else {
+				c.emit(Pop, nil, s.Catch.Token.Pos)
+			}
+			if err := c.statement(s.Catch.Body); err != nil {
+				return err
+			}
+		}
+		c.label(endLabel)
 	}
 	return nil
 }
