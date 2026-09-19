@@ -46,6 +46,7 @@ const (
 	TypeStruct
 	TypeUnion
 	TypeFunction
+	TypeAuto
 )
 
 type Type struct {
@@ -111,6 +112,8 @@ func (t Type) String() string {
 		return prefix + "union"
 	case TypeFunction:
 		return prefix + "function"
+	case TypeAuto:
+		return prefix + "auto"
 	default:
 		return "unknown"
 	}
@@ -320,6 +323,8 @@ func (a *Analyzer) typeFromSpecs(specs []parser.TypeSpec) Type {
 		}
 
 		switch spec.Token.Type {
+		case token.AUTO:
+			t.Kind = TypeAuto
 		case token.VOID:
 			t.Kind = TypeVoid
 		case token.INT_KW, token.SHORT, token.LONG, token.SIGNED, token.UNSIGNED:
@@ -644,7 +649,7 @@ func (a *Analyzer) statement(statement parser.Statement) {
 		a.popScope()
 	case *parser.SwitchStmt:
 		vType := a.expression(s.Value)
-		if vType.Kind != TypeUnknown && !isIntegerType(vType.Kind) && vType.Kind != TypeString {
+		if vType.Kind != TypeUnknown && vType.Kind != TypeAuto && !isIntegerType(vType.Kind) && vType.Kind != TypeString {
 			a.problem(s.Value.Position(), "switch quantity is not an integer")
 		}
 		a.switches++
@@ -656,7 +661,7 @@ func (a *Analyzer) statement(statement parser.Statement) {
 		}
 		if s.Value != nil {
 			cType := a.expression(s.Value)
-			if cType.Kind != TypeUnknown && !isIntegerType(cType.Kind) && cType.Kind != TypeString {
+			if cType.Kind != TypeUnknown && cType.Kind != TypeAuto && !isIntegerType(cType.Kind) && cType.Kind != TypeString {
 				a.problem(s.Value.Position(), "case label is not an integer")
 			}
 		}
@@ -731,7 +736,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 		t := a.expression(e.Operand)
 		switch e.Operator.Type {
 		case token.PLUS, token.MINUS:
-			if t.Kind != TypeUnknown && !isNumericType(t.Kind) {
+			if t.Kind != TypeUnknown && t.Kind != TypeAuto && !isNumericType(t.Kind) {
 				a.problem(e.Operator.Pos, "invalid operand of type %q to unary %s", t.String(), e.Operator.Literal)
 			}
 			return t
@@ -741,7 +746,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			}
 			return Type{Kind: TypeBool}
 		case token.BIT_NOT:
-			if t.Kind != TypeUnknown && !isIntegerType(t.Kind) {
+			if t.Kind != TypeUnknown && t.Kind != TypeAuto && !isIntegerType(t.Kind) {
 				a.problem(e.Operator.Pos, "invalid operand of type %q to bitwise NOT", t.String())
 			}
 			return t
@@ -751,6 +756,9 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			}
 			if t.Kind == TypeArray && t.Base != nil {
 				return *t.Base
+			}
+			if t.Kind == TypeAuto {
+				return Type{Kind: TypeAuto}
 			}
 			if t.Kind != TypeUnknown {
 				a.problem(e.Operator.Pos, "invalid operand of type %q to unary '*'", t.String())
@@ -766,7 +774,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 				a.problem(e.Operator.Pos, "lvalue required as %s operand", e.Operator.Literal)
 			} else if t.IsConst {
 				a.problem(e.Operator.Pos, "cannot modify read-only value")
-			} else if t.Kind != TypeUnknown && !isScalarType(t.Kind) {
+			} else if t.Kind != TypeUnknown && t.Kind != TypeAuto && !isScalarType(t.Kind) {
 				a.problem(e.Operator.Pos, "wrong type argument to %s", e.Operator.Literal)
 			}
 			return t
@@ -779,7 +787,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 
 		switch e.Operator.Type {
 		case token.PERCENT, token.BIT_AND, token.BIT_OR, token.BIT_XOR, token.SHL, token.SHR:
-			if (lt.Kind != TypeUnknown && !isIntegerType(lt.Kind)) || (rt.Kind != TypeUnknown && !isIntegerType(rt.Kind)) {
+			if (lt.Kind != TypeUnknown && lt.Kind != TypeAuto && !isIntegerType(lt.Kind)) || (rt.Kind != TypeUnknown && rt.Kind != TypeAuto && !isIntegerType(rt.Kind)) {
 				a.problem(e.Operator.Pos, "invalid operands to binary %s (have %q and %q)", e.Operator.Literal, lt.String(), rt.String())
 			}
 			return Type{Kind: TypeInt}
@@ -835,7 +843,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 		}
 
 		if isCompoundBitwiseOperator(e.Operator.Type) {
-			if (lt.Kind != TypeUnknown && !isIntegerType(lt.Kind)) || (rt.Kind != TypeUnknown && !isIntegerType(rt.Kind)) {
+			if (lt.Kind != TypeUnknown && lt.Kind != TypeAuto && !isIntegerType(lt.Kind)) || (rt.Kind != TypeUnknown && rt.Kind != TypeAuto && !isIntegerType(rt.Kind)) {
 				a.problem(e.Operator.Pos, "invalid operands to binary %s (have %q and %q)", e.Operator.Literal, lt.String(), rt.String())
 			}
 		} else if lt.Kind != TypeUnknown && rt.Kind != TypeUnknown {
@@ -881,6 +889,8 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 				return *ft.ReturnType
 			}
 			return Type{Kind: TypeVoid}
+		} else if ft.Kind == TypeAuto {
+			return Type{Kind: TypeAuto}
 		} else if ft.Kind != TypeUnknown && ft.Kind != TypeInt && ft.Kind != TypePointer {
 			a.problem(e.Open.Pos, "called object of type %q is not a function", ft.String())
 		}
@@ -890,10 +900,10 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 		vt := a.expression(e.Value)
 		it := a.expression(e.Index)
 
-		if vt.Kind != TypeUnknown && vt.Kind != TypeArray && vt.Kind != TypePointer && vt.Kind != TypeString {
+		if vt.Kind != TypeUnknown && vt.Kind != TypeAuto && vt.Kind != TypeArray && vt.Kind != TypePointer && vt.Kind != TypeString {
 			a.problem(e.Open.Pos, "subscripted value is not an array or pointer (has type %q)", vt.String())
 		}
-		if it.Kind != TypeUnknown && !isIntegerType(it.Kind) {
+		if it.Kind != TypeUnknown && it.Kind != TypeAuto && !isIntegerType(it.Kind) {
 			a.problem(e.Index.Position(), "array subscript is not an integer (has type %q)", it.String())
 		}
 
@@ -907,6 +917,8 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			}
 		} else if vt.Kind == TypeString {
 			return Type{Kind: TypeChar}
+		} else if vt.Kind == TypeAuto {
+			return Type{Kind: TypeAuto}
 		}
 		return Type{Kind: TypeUnknown}
 
@@ -920,6 +932,8 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 				st = *vt.Base
 			} else if vt.Kind == TypeStruct || vt.Kind == TypeUnion {
 				st = vt
+			} else if vt.Kind == TypeAuto {
+				return Type{Kind: TypeAuto}
 			} else if vt.Kind != TypeUnknown {
 				a.problem(e.Operator.Pos, "expected struct or union before '.' operator (has type %q)", vt.String())
 				return Type{Kind: TypeUnknown}
@@ -930,6 +944,8 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 				st = vt
 			} else if vt.Kind == TypePointer && vt.Base != nil && (vt.Base.Kind == TypeStruct || vt.Base.Kind == TypeUnion) {
 				st = *vt.Base
+			} else if vt.Kind == TypeAuto {
+				return Type{Kind: TypeAuto}
 			} else if vt.Kind != TypeUnknown {
 				a.problem(e.Operator.Pos, "expected pointer to struct or union before '->' operator (has type %q)", vt.String())
 				return Type{Kind: TypeUnknown}
@@ -992,7 +1008,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 }
 
 func (a *Analyzer) isCompatible(target, source Type) bool {
-	if target.Kind == TypeUnknown || source.Kind == TypeUnknown {
+	if target.Kind == TypeUnknown || source.Kind == TypeUnknown || target.Kind == TypeAuto || source.Kind == TypeAuto {
 		return true
 	}
 	if target.Kind == source.Kind {

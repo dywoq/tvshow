@@ -162,7 +162,7 @@ func isStorage(k token.TokenType) bool {
 	return k == token.TYPEDEF || k == token.EXTERN || k == token.STATIC || k == token.AUTO || k == token.INLINE
 }
 func isBuiltin(k token.TokenType) bool {
-	return k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY || k == token.STRING_KW
+	return k == token.AUTO || k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY || k == token.STRING_KW
 }
 func (p *Parser) parseDeclarator() (Declarator, error) {
 	var d Declarator

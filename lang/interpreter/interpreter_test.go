@@ -325,6 +325,29 @@ func TestRunExecutesStructWithUninitializedArrayMember(t *testing.T) {
 	}
 }
 
+func TestRunExecutesAutoType(t *testing.T) {
+	program := programFromSource(t, `
+		auto identity(auto val) {
+			return val;
+		}
+
+		auto Start() {
+			auto a = 10;
+			auto b = "hello";
+			a = b;
+			auto c = identity(123);
+			auto d = identity("world");
+			return a + " " + d;
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "hello world" {
+		t.Errorf("Run = %#v, want %q", got, "hello world")
+	}
+}
+
 func TestRunExecutesStructWithArrayMemberInitialization(t *testing.T) {
 	program := programFromSource(t, `
 		typedef struct VectorInt {

@@ -330,7 +330,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
 | Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
 | Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking. |
-| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Supported** (for `const`) | `const` qualifiers strictly enforced by semantic analyzer for variables, struct fields, array elements, and pointer target dereferences. Storage duration specifiers (`static`, `extern`, `auto`, `inline`) parsed. Note: `register`, `volatile`, and `restrict` keywords removed. |
+| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Storage duration specifiers (`static`, `extern`, `inline`) parsed. Note: `register`, `volatile`, and `restrict` keywords removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
 
 ### 5. Expressions & Operators
