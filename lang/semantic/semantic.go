@@ -717,6 +717,33 @@ func (a *Analyzer) statement(statement parser.Statement) {
 		if s.Token.Type != token.RETURN {
 			a.expression(s.Value)
 		}
+	case *parser.ThrowStmt:
+		if s.Value != nil {
+			vType := a.expression(s.Value)
+			if vType.Kind != TypeUnknown && vType.Kind != TypeAuto && vType.Kind != TypeString {
+				a.problem(s.Value.Position(), "cannot throw non-string exception of type %q", vType.String())
+			}
+		} else {
+			a.problem(s.Token.Pos, "throw statement requires an expression")
+		}
+	case *parser.TryCatchStmt:
+		a.statement(s.Body)
+		if s.Catch != nil {
+			a.pushScope()
+			if len(s.Catch.VarType) > 0 {
+				cType := a.typeFromSpecs(s.Catch.VarType)
+				if cType.Kind != TypeUnknown && cType.Kind != TypeAuto && cType.Kind != TypeString {
+					a.problem(s.Catch.Position(), "catch parameter type must be string (got %q)", cType.String())
+				}
+				cType = a.typeFromDeclarator(cType, s.Catch.Declarator)
+				varName := s.Catch.Declarator.Name.Literal
+				if varName != "" {
+					a.values.entries[varName] = symbol{kind: variableSymbol, typ: cType}
+				}
+			}
+			a.block(s.Catch.Body, false)
+			a.popScope()
+		}
 	}
 }
 

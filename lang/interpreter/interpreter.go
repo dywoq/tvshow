@@ -25,6 +25,32 @@ func (e Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Position, e.Message)
 }
 
+// ExceptionInfo provides full exception details passed to the host exception handler or returned as an error.
+type ExceptionInfo struct {
+	Message   string
+	Position  token.Position
+	FuncName  string
+	CallStack []StackFrame
+}
+
+func (e ExceptionInfo) Error() string {
+	if e.Position == (token.Position{}) {
+		return "exception: " + e.Message
+	}
+	return fmt.Sprintf("%s: exception: %s", e.Position, e.Message)
+}
+
+// ExceptionHandler is a host callback function invoked when an uncaught exception occurs.
+type ExceptionHandler func(info ExceptionInfo)
+
+type uncaughtException struct {
+	info ExceptionInfo
+}
+
+func (u uncaughtException) Error() string {
+	return u.info.Error()
+}
+
 // Function is a host function callable from Scintilla code.
 type Function func(args []any) (any, error)
 
@@ -41,6 +67,11 @@ func cellAddress(c *cell) address {
 type functionRef struct{ name string }
 type frame struct{ vars map[string]*cell }
 
+type catchHandler struct {
+	targetPC   int
+	stackDepth int
+}
+
 // Interpreter executes instructions and, when constructed with a Program, can
 // call its translated functions. Values are represented as int64, float64,
 // string, or Go aggregate values supplied by callers.
@@ -50,16 +81,65 @@ type callFrameInfo struct {
 	pc       int
 	local    *frame
 	stack    *[]any
+	handlers []catchHandler
 }
 
 type Interpreter struct {
-	program     *bytecode.Program
-	globals     frame
-	functions   map[string]bytecode.Function
-	host        map[string]Function
-	initialized bool
-	debugger    *Debugger
-	callStack   []*callFrameInfo
+	program          *bytecode.Program
+	globals          frame
+	functions        map[string]bytecode.Function
+	host             map[string]Function
+	initialized      bool
+	debugger         *Debugger
+	callStack        []*callFrameInfo
+	exceptionHandler ExceptionHandler
+}
+
+// SetExceptionHandler sets the host exception handler for uncaught exceptions.
+func (i *Interpreter) SetExceptionHandler(handler ExceptionHandler) {
+	i.exceptionHandler = handler
+}
+
+func (i *Interpreter) captureCallStack() []StackFrame {
+	n := len(i.callStack)
+	frames := make([]StackFrame, n)
+	for idx := 0; idx < n; idx++ {
+		info := i.callStack[n-1-idx]
+		sf := StackFrame{
+			FuncName: info.funcName,
+			PC:       info.pc,
+			Locals:   make(map[string]any),
+		}
+		if info.pc >= 0 && info.pc < len(info.code) {
+			sf.Instruction = info.code[info.pc]
+			sf.Position = sf.Instruction.Position
+		}
+		if info.local != nil && info.local.vars != nil {
+			for k, cell := range info.local.vars {
+				if cell != nil {
+					sf.Locals[k] = cell.value
+				}
+			}
+		}
+		frames[idx] = sf
+	}
+	return frames
+}
+
+func (i *Interpreter) handleUncaughtError(err error) error {
+	if uncaught, ok := err.(uncaughtException); ok {
+		if i.exceptionHandler != nil {
+			i.exceptionHandler(uncaught.info)
+		}
+		return uncaught.info
+	}
+	if exc, ok := err.(ExceptionInfo); ok {
+		if i.exceptionHandler != nil {
+			i.exceptionHandler(exc)
+		}
+		return exc
+	}
+	return err
 }
 
 // SetDebugger binds a Debugger to the Interpreter.
@@ -123,7 +203,11 @@ func InterpretBinary(code [][]byte) (any, error) { return New().ExecuteBinary(co
 
 // Execute executes code with a fresh local scope and returns its return value.
 func (i *Interpreter) Execute(code []bytecode.Instruction) (any, error) {
-	return i.execute(code, nil, nil)
+	res, err := i.execute(code, nil, nil)
+	if err != nil {
+		return nil, i.handleUncaughtError(err)
+	}
+	return res, nil
 }
 
 // ExecuteBinary decodes binary instructions before executing them.
@@ -139,11 +223,15 @@ func (i *Interpreter) ExecuteBinary(code [][]byte) (any, error) {
 func (i *Interpreter) Run(name string, args ...any) (any, error) {
 	if i.program != nil && !i.initialized {
 		if _, err := i.execute(i.program.Globals, nil, &i.globals); err != nil {
-			return nil, err
+			return nil, i.handleUncaughtError(err)
 		}
 		i.initialized = true
 	}
-	return i.call(functionRef{name}, args)
+	res, err := i.call(functionRef{name}, args)
+	if err != nil {
+		return nil, i.handleUncaughtError(err)
+	}
+	return res, nil
 }
 
 func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited *frame) (any, error) {
@@ -286,6 +374,12 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			}
 			n := len(stack)
 			stack[n-3], stack[n-2] = stack[n-2], stack[n-3]
+		case bytecode.Swap:
+			if len(stack) < 2 {
+				return fail("swap requires two values on stack")
+			}
+			n := len(stack)
+			stack[n-1], stack[n-2] = stack[n-2], stack[n-1]
 		case bytecode.ToBool:
 			v, e := pop(ins)
 			if e != nil {
@@ -351,12 +445,71 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 				return fail("call requires a function")
 			}
 			if e != nil {
+				if len(frameInfo.handlers) > 0 {
+					var excMsg string
+					if uncaught, ok := e.(uncaughtException); ok {
+						excMsg = uncaught.info.Message
+					} else if exc, ok := e.(ExceptionInfo); ok {
+						excMsg = exc.Message
+					} else {
+						excMsg = e.Error()
+					}
+					h := frameInfo.handlers[len(frameInfo.handlers)-1]
+					frameInfo.handlers = frameInfo.handlers[:len(frameInfo.handlers)-1]
+					stack = stack[:h.stackDepth]
+					stack = append(stack, excMsg)
+					pc = h.targetPC - 1
+					continue
+				}
+				if uncaught, ok := e.(uncaughtException); ok {
+					return nil, uncaught
+				}
+				if exc, ok := e.(ExceptionInfo); ok {
+					return nil, uncaughtException{info: exc}
+				}
 				if err, ok := e.(Error); ok {
 					return nil, err
 				}
 				return fail(e.Error())
 			}
 			stack = append(stack, v)
+		case bytecode.PushCatch:
+			target, ok := ins.Operand.(int)
+			if !ok || target < 0 || target >= len(code) {
+				return fail("invalid catch target")
+			}
+			frameInfo.handlers = append(frameInfo.handlers, catchHandler{
+				targetPC:   target,
+				stackDepth: len(stack),
+			})
+		case bytecode.PopCatch:
+			if len(frameInfo.handlers) > 0 {
+				frameInfo.handlers = frameInfo.handlers[:len(frameInfo.handlers)-1]
+			}
+		case bytecode.Throw:
+			v, e := pop(ins)
+			if e != nil {
+				return nil, e
+			}
+			msg, ok := v.(string)
+			if !ok {
+				return fail("throw requires a string exception")
+			}
+			excInfo := ExceptionInfo{
+				Message:   msg,
+				Position:  ins.Position,
+				FuncName:  funcName,
+				CallStack: i.captureCallStack(),
+			}
+			if len(frameInfo.handlers) > 0 {
+				h := frameInfo.handlers[len(frameInfo.handlers)-1]
+				frameInfo.handlers = frameInfo.handlers[:len(frameInfo.handlers)-1]
+				stack = stack[:h.stackDepth]
+				stack = append(stack, excInfo.Message)
+				pc = h.targetPC - 1
+				continue
+			}
+			return nil, uncaughtException{info: excInfo}
 		case bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue:
 			target, ok := ins.Operand.(int)
 			if !ok || target < 0 || target >= len(code) {
