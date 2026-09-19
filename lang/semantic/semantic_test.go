@@ -269,6 +269,47 @@ func TestAnalyzeFunctionParametersAndCalls(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAutoType(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{
+			name:   "auto variable holds int",
+			source: `int Start() { auto x = 10; return x; }`,
+		},
+		{
+			name:   "auto variable holds string and reassigned to int",
+			source: `int Start() { auto x = "hello"; x = 42; return 0; }`,
+		},
+		{
+			name:   "auto function param and return",
+			source: `auto process(auto x) { return x; } int Start() { auto res = process(100); return 0; }`,
+		},
+		{
+			name:   "auto bitwise operation",
+			source: `int Start() { auto x = 5; auto y = x & 1; return y; }`,
+		},
+		{
+			name:   "auto subscript and member access",
+			source: `int Start() { auto arr; auto val = arr[0]; auto obj; auto m = obj.field; auto p = obj->field; return 0; }`,
+		},
+		{
+			name:   "auto call operator",
+			source: `int Start() { auto fn; auto res = fn(1, "test"); return 0; }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyzeSource(t, tt.source)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", tt.name, err)
+			}
+		})
+	}
+}
+
 func TestAnalyzeLocalVariablesAndReturnStatements(t *testing.T) {
 	tests := []struct {
 		name    string
