@@ -978,7 +978,10 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			a.expression(e.Value)
 		}
 		if len(e.Type) > 0 {
-			a.typeFromSpecs(e.Type)
+			t := a.typeFromSpecs(e.Type)
+			if e.Declarator.Name.Literal != "" || len(e.Declarator.Pointers) > 0 || len(e.Declarator.Suffixes) > 0 {
+				a.typeFromDeclarator(t, e.Declarator)
+			}
 		}
 		return Type{Kind: TypeInt}
 

@@ -151,6 +151,29 @@ func TestRunStringOperationsAndSizeof(t *testing.T) {
 	}
 }
 
+func TestRunArraySizeof(t *testing.T) {
+	program := programFromSource(t, `
+		int Start() {
+			if (sizeof(int[5]) != 40) return 1;
+			if (sizeof(char[10]) != 10) return 2;
+			int arr[5] = { 1, 2, 3, 4, 5 };
+			if (sizeof(arr) != 5) return 3;
+			int dyn[];
+			dyn[0] = 10;
+			dyn[1] = 20;
+			dyn[2] = 30;
+			if (sizeof(dyn) != 3) return 4;
+			return 0;
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(0) {
+		t.Errorf("Run = %#v, want 0", got)
+	}
+}
+
 func TestRunAddressOfCompoundLiteral(t *testing.T) {
 	program := programFromSource(t, `
 		typedef struct Point { int x; int y; } Point;
