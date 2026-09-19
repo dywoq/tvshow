@@ -7,16 +7,33 @@ import (
 // Window consists of the game window configuration settings.
 // It provides a way to run the game.
 type Window struct {
-	Width  int
-	Height int
-	Title  string
+	Width     int
+	Height    int
+	Title     string
+	Executors []Executor
 }
+
+// ExecutorParams provides necessary information to an executor function.
+type ExecutorParams struct {
+	Window *Window
+}
+
+// Executor is a function that is executed every frame.
+// It can be used to run guest program code, calculate coordinates and etc.
+// related to game logic.
+type Executor func(params *ExecutorParams) error
 
 type ebitenWindow struct {
 	w *Window
 }
 
 func (e *ebitenWindow) Update() error {
+	params := &ExecutorParams{
+		Window: e.w,
+	}
+	for _, ex := range e.w.Executors {
+		ex(params)
+	}
 	return nil
 }
 
