@@ -109,6 +109,26 @@ func TestTranslateCompoundLiteralsAndInitializerLists(t *testing.T) {
 	}
 }
 
+func TestTranslateStringAndSizeof(t *testing.T) {
+	program := translateSource(t, `string s = "hello"; int Start() { int a = sizeof(string); int b = sizeof(s); return a + b; }`)
+	if len(program.Globals) == 0 {
+		t.Fatalf("globals empty, expected string declaration")
+	}
+	if len(program.Functions) != 1 {
+		t.Fatalf("functions = %d, want 1", len(program.Functions))
+	}
+	seen := map[Opcode]bool{}
+	for _, ins := range program.Functions[0].Code {
+		seen[ins.Opcode] = true
+	}
+	if !seen[Unary] {
+		t.Errorf("missing Unary opcode for sizeof(s)")
+	}
+	if !seen[PushLiteral] {
+		t.Errorf("missing PushLiteral opcode for sizeof(string)")
+	}
+}
+
 func TestTranslateShortCircuitAndGlobals(t *testing.T) {
 	program := translateSource(t, `int flag = 0; int Start() { flag && (flag = 1); return flag ? flag : 2; }`)
 	if len(program.Globals) == 0 || program.Globals[0].Opcode != Declare {

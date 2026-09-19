@@ -312,6 +312,42 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 			if e != nil || n < 0 {
 				return fail("address_index requires a non-negative integer index")
 			}
+			if ad, ok := base.(address); ok {
+				if str, ok := ad.get().(string); ok {
+					at := int(n)
+					if at < 0 || at >= len(str) {
+						return fail("string index out of range")
+					}
+					stack = append(stack, address{
+						get: func() any {
+							s := ad.get().(string)
+							return int64(s[at])
+						},
+						set: func(v any) {
+							ch, ok := v.(int64)
+							if !ok {
+								return
+							}
+							b := []byte(ad.get().(string))
+							if at >= 0 && at < len(b) {
+								b[at] = byte(ch)
+								ad.set(string(b))
+							}
+						},
+					})
+					continue
+				}
+			} else if str, ok := base.(string); ok {
+				at := int(n)
+				if at < 0 || at >= len(str) {
+					return fail("string index out of range")
+				}
+				stack = append(stack, address{
+					get: func() any { return int64(str[at]) },
+					set: func(v any) {},
+				})
+				continue
+			}
 			var values []any
 			if ad, ok := base.(address); ok {
 				if ad.get() == nil {
@@ -449,6 +485,21 @@ func unary(op any, v any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("unary requires an operator")
 	}
+	if s == "sizeof" {
+		if str, ok := v.(string); ok {
+			return int64(len(str)), nil
+		}
+		if arr, ok := v.([]any); ok {
+			return int64(len(arr)), nil
+		}
+		if m, ok := v.(map[string]any); ok {
+			return int64(len(m)), nil
+		}
+		if v == nil {
+			return int64(0), nil
+		}
+		return int64(8), nil
+	}
 	if s == "!" {
 		return boolInt(!truth(v)), nil
 	}
@@ -519,6 +570,42 @@ func operation(op any, l, r any) (any, error) {
 	}
 	if s == "||" {
 		return boolInt(truth(l) || truth(r)), nil
+	}
+	ls, leftStr := l.(string)
+	rs, rightStr := r.(string)
+	if leftStr || rightStr {
+		if s == "+" {
+			if leftStr && rightStr {
+				return ls + rs, nil
+			}
+			if leftStr {
+				if rc, ok := r.(int64); ok {
+					return ls + string(rune(rc)), nil
+				}
+			}
+			if rightStr {
+				if lc, ok := l.(int64); ok {
+					return string(rune(lc)) + rs, nil
+				}
+			}
+			return nil, fmt.Errorf("cannot append %T to string", r)
+		}
+		if leftStr && rightStr {
+			switch s {
+			case "==":
+				return boolInt(ls == rs), nil
+			case "!=":
+				return boolInt(ls != rs), nil
+			case "<":
+				return boolInt(ls < rs), nil
+			case "<=":
+				return boolInt(ls <= rs), nil
+			case ">":
+				return boolInt(ls > rs), nil
+			case ">=":
+				return boolInt(ls >= rs), nil
+			}
+		}
 	}
 	_, leftFloat := l.(float64)
 	_, rightFloat := r.(float64)

@@ -24,6 +24,13 @@ func TestAnalyzeAcceptsCompoundLiterals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAcceptsStringAndSizeof(t *testing.T) {
+	err := analyzeSource(t, `string concat(string a, string b) { string res = a; res += b; res += '!'; int sz = sizeof(res) + sizeof(string); return res; }`)
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+}
+
 func TestAnalyzeAcceptsScopedFunctionAndForwardCall(t *testing.T) {
 	err := analyzeSource(t, `int Start() { int value = next(1); { int value = 2; value++; } return value; } int next(int value) { return value; }`)
 	if err != nil {

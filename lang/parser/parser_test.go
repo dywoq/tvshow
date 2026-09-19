@@ -65,6 +65,31 @@ void Start() {
 	}
 }
 
+func TestParseStringAndSizeof(t *testing.T) {
+	input := `string greeting = "hello";
+int get_len(string s) {
+	int a = sizeof(string);
+	int b = sizeof(s);
+	int c = sizeof("world");
+	return b;
+}`
+	program, err := Parse(lexer.New("str.sc", input).Tokens())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(program.Declarations) != 2 {
+		t.Fatalf("declarations = %d, want 2", len(program.Declarations))
+	}
+	vdecl, ok := program.Declarations[0].(*VarDecl)
+	if !ok || vdecl.Specs[0].Token.Type != token.STRING_KW {
+		t.Fatalf("expected string type specifier, got %v", vdecl.Specs[0])
+	}
+	fn, ok := program.Declarations[1].(*FunctionDecl)
+	if !ok || len(fn.Body.Items) != 4 {
+		t.Fatalf("function body items = %d, want 4", len(fn.Body.Items))
+	}
+}
+
 func TestNodesImplementStringer(t *testing.T) {
 	var _ Node = &Program{}
 	var _ Node = &VarDecl{Specs: []TypeSpec{{Token: token.Token{}}}}
