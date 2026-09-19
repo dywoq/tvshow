@@ -2,7 +2,6 @@
 package interpreter
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"reflect"
@@ -86,6 +85,24 @@ func New(program ...*bytecode.Program) *Interpreter {
 		}
 	}
 	return i
+}
+
+// NewFromBinary creates an interpreter from a binary encoded bytecode Program.
+func NewFromBinary(programData []byte) (*Interpreter, error) {
+	prog, err := bytecode.DecodeProgram(programData)
+	if err != nil {
+		return nil, fmt.Errorf("interpreter: failed to decode program binary: %w", err)
+	}
+	return New(prog), nil
+}
+
+// InterpretProgramBinary decodes a binary program and executes a target function.
+func InterpretProgramBinary(programData []byte, funcName string, args ...any) (any, error) {
+	interp, err := NewFromBinary(programData)
+	if err != nil {
+		return nil, err
+	}
+	return interp.Run(funcName, args...)
 }
 
 // RegisterFunction makes a Go function available to call instructions.
@@ -862,59 +879,9 @@ func equal(a, b any) bool {
 
 // DecodeInstruction decodes the stable binary form created by Instruction.MarshalBinary.
 func DecodeInstruction(data []byte) (bytecode.Instruction, error) {
-	var z bytecode.Instruction
-	if len(data) < 3 {
-		return z, fmt.Errorf("interpreter: truncated instruction")
-	}
-	if data[0] != 1 {
-		return z, fmt.Errorf("interpreter: unsupported bytecode version %d", data[0])
-	}
-	op, ok := decodeOpcode(data[1])
-	if !ok {
-		return z, fmt.Errorf("interpreter: unknown binary opcode %d", data[1])
-	}
-	p := 3
-	readString := func() (string, error) {
-		if len(data)-p < 4 {
-			return "", fmt.Errorf("truncated string")
-		}
-		n := int(binary.BigEndian.Uint32(data[p:]))
-		p += 4
-		if n < 0 || len(data)-p < n {
-			return "", fmt.Errorf("truncated string")
-		}
-		s := string(data[p : p+n])
-		p += n
-		return s, nil
-	}
-	var operand any
-	switch data[2] {
-	case 0:
-	case 1:
-		s, e := readString()
-		if e != nil {
-			return z, fmt.Errorf("interpreter: %v", e)
-		}
-		operand = s
-	case 2:
-		if len(data)-p < 8 {
-			return z, fmt.Errorf("interpreter: truncated integer operand")
-		}
-		operand = int(int64(binary.BigEndian.Uint64(data[p:])))
-		p += 8
-	default:
-		return z, fmt.Errorf("interpreter: unknown operand kind %d", data[2])
-	}
-	filename, e := readString()
-	if e != nil {
-		return z, fmt.Errorf("interpreter: %v", e)
-	}
-	if len(data)-p != 24 {
-		return z, fmt.Errorf("interpreter: invalid source position")
-	}
-	pos := token.Position{Filename: filename, Line: int(int64(binary.BigEndian.Uint64(data[p:]))), Column: int(int64(binary.BigEndian.Uint64(data[p+8:]))), Offset: int(int64(binary.BigEndian.Uint64(data[p+16:])))}
-	return bytecode.Instruction{Opcode: op, Operand: operand, Position: pos}, nil
+	return bytecode.DecodeInstruction(data)
 }
+
 func DecodeInstructions(data [][]byte) ([]bytecode.Instruction, error) {
 	out := make([]bytecode.Instruction, len(data))
 	for n, b := range data {
@@ -925,13 +892,6 @@ func DecodeInstructions(data [][]byte) ([]bytecode.Instruction, error) {
 		out[n] = v
 	}
 	return out, nil
-}
-func decodeOpcode(n byte) (bytecode.Opcode, bool) {
-	ops := []bytecode.Opcode{"", bytecode.Declare, bytecode.PushLiteral, bytecode.Load, bytecode.Address, bytecode.AddressIndex, bytecode.AddressMember, bytecode.LoadIndirect, bytecode.StoreIndirect, bytecode.Unary, bytecode.ToBool, bytecode.Binary, bytecode.Dup, bytecode.Rotate, bytecode.Pop, bytecode.Call, bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue, bytecode.Return, bytecode.MakeArray, bytecode.MakeStruct, bytecode.Convert}
-	if int(n) >= len(ops) || n == 0 {
-		return "", false
-	}
-	return ops[n], true
 }
 
 func valueTypeName(v any) string {

@@ -158,6 +158,12 @@ Translates semantically validated AST into stack-machine instructions. Runs sema
   - Produces binary-encodable bytecode.
 - **Key Functions:**
   - `Translate(program *parser.Program) (*Program, error)`
+  - `(p *Program) MarshalBinary() ([]byte, error)` / `(p *Program) Bytes() ([]byte, error)`
+  - `(p *Program) UnmarshalBinary(data []byte) error`
+  - `DecodeProgram(data []byte) (*Program, error)`
+  - `(i Instruction) MarshalBinary() ([]byte, error)` / `(i Instruction) Bytes() ([]byte, error)`
+  - `(i *Instruction) UnmarshalBinary(data []byte) error`
+  - `DecodeInstruction(data []byte) (Instruction, error)`
 
 ### 7. `lang/interpreter`
 Stack-based virtual machine executing Scintilla bytecode programs.
@@ -169,13 +175,16 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - Built-in interactive debugger (`Debugger`) providing breakpoints, stepping modes, execution control, and runtime state inspection.
 - **Key Functions & Types:**
   - `New(program ...*bytecode.Program) *Interpreter`
+  - `NewFromBinary(programData []byte) (*Interpreter, error)`
   - `(i *Interpreter) RegisterFunction(name string, fn Function)`
   - `(i *Interpreter) Run(name string, args ...any) (any, error)`
   - `(i *Interpreter) Execute(code []bytecode.Instruction) (any, error)`
+  - `(i *Interpreter) ExecuteBinary(code [][]byte) (any, error)`
   - `(i *Interpreter) ToFunction(v any) (Function, error)`
   - `(i *Interpreter) CallFunc(fn any, args ...any) (any, error)`
   - `(i *Interpreter) SetDebugger(d *Debugger)`
   - `InterpretBinary(code [][]byte) (any, error)`
+  - `InterpretProgramBinary(programData []byte, funcName string, args ...any) (any, error)`
   - `NewDebugger() *Debugger`
   - `(d *Debugger) Attach(interp *Interpreter)`
   - `(d *Debugger) SetHook(fn HookFunc)`
@@ -319,12 +328,13 @@ result, err := interp.Run("Start")
 
 ---
 
-### Binary Format Specification (`Instruction.MarshalBinary`)
+### Binary Format Specification (`Instruction.MarshalBinary` & `Program.MarshalBinary`)
 
-Instructions can be serialized into a portable, architecture-independent binary stream (`Version 1` layout):
+Bytecode structures can be serialized into portable, architecture-independent binary streams (`Version 1` layout) and reversed back into full Go structs (`UnmarshalBinary`, `DecodeProgram`, `DecodeInstruction`):
 
+#### 1. Instruction Layout (`Instruction.MarshalBinary`)
 1. **Header (3 bytes):**
-   - Byte 0: Format Version (`1`)
+   - Byte 0: Instruction Format Version (`1`)
    - Byte 1: Opcode numeric identifier (1-22)
    - Byte 2: Operand Kind (`0` = None, `1` = String, `2` = Integer)
 2. **Operand Payload (variable):**
@@ -336,6 +346,19 @@ Instructions can be serialized into a portable, architecture-independent binary 
    - Line: `int64` Big-Endian signed integer.
    - Column: `int64` Big-Endian signed integer.
    - Offset: `int64` Big-Endian signed integer.
+
+#### 2. Whole Program Layout (`Program.MarshalBinary`)
+1. **Header (1 byte):**
+   - Byte 0: Program Format Version (`1`)
+2. **Globals Section:**
+   - `uint32` Big-Endian count of global instructions.
+   - Sequence of global instructions, each encoded as a `uint32` Big-Endian byte-length followed by the serialized instruction binary payload.
+3. **Functions Section:**
+   - `uint32` Big-Endian count of translated functions.
+   - For each function:
+     - Function Name: `uint32` Big-Endian length + UTF-8 bytes.
+     - Parameters: `uint32` Big-Endian count + array of parameter names (each `uint32` length + UTF-8 bytes).
+     - Code: `uint32` Big-Endian instruction count + sequence of function body instructions (each `uint32` length + instruction payload).
 
 ---
 

@@ -479,3 +479,45 @@ func TestRunExecutesStructWithArrayMemberInitialization(t *testing.T) {
 		t.Errorf("Run = %#v, want %d", got, 10+42+30)
 	}
 }
+
+func TestRunProgramFromBinary(t *testing.T) {
+	source := `
+		int val = 5;
+		int Multiply(int a, int b) { return a * b + val; }
+		int Start() { return Multiply(6, 7); }
+	`
+	program := programFromSource(t, source)
+	data, err := program.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+
+	interp, err := NewFromBinary(data)
+	if err != nil {
+		t.Fatalf("NewFromBinary: %v", err)
+	}
+
+	got, err := interp.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(47) {
+		t.Errorf("Run = %#v, want 47", got)
+	}
+
+	// Test InterpretProgramBinary convenience helper
+	got2, err := InterpretProgramBinary(data, "Multiply", int64(3), int64(4))
+	if err != nil {
+		t.Fatalf("InterpretProgramBinary: %v", err)
+	}
+	if got2 != int64(17) {
+		t.Errorf("InterpretProgramBinary = %#v, want 17", got2)
+	}
+}
+
+func TestNewFromBinaryRejectsCorruptedData(t *testing.T) {
+	_, err := NewFromBinary([]byte{0x99, 0x00})
+	if err == nil {
+		t.Error("NewFromBinary accepted corrupt data")
+	}
+}
