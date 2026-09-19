@@ -310,6 +310,70 @@ func TestAnalyzeAutoType(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFunctionAliasesAndStrictTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name:   "valid function pointer typedef and assignment",
+			source: `typedef int (*BinaryOp)(int, int); int add(int a, int b) { return a + b; } int Start() { BinaryOp fn = add; return fn(1, 2); }`,
+		},
+		{
+			name:   "valid address of function",
+			source: `typedef int (*BinaryOp)(int, int); int add(int a, int b) { return a + b; } int Start() { BinaryOp fn = &add; return fn(1, 2); }`,
+		},
+		{
+			name:   "dereferenced function pointer call",
+			source: `typedef int (*BinaryOp)(int, int); int add(int a, int b) { return a + b; } int Start() { BinaryOp fn = add; return (*fn)(1, 2); }`,
+		},
+		{
+			name:    "incompatible parameter count in function pointer assignment",
+			source:  `typedef int (*Op2)(int, int); int single(int a) { return a; } int Start() { Op2 fn = single; return 0; }`,
+			wantErr: `incompatible type in initialization of "fn"`,
+		},
+		{
+			name:    "incompatible parameter type in function pointer assignment",
+			source:  `typedef int (*Op)(int, string); int add(int a, int b) { return a + b; } int Start() { Op fn = add; return 0; }`,
+			wantErr: `incompatible type in initialization of "fn"`,
+		},
+		{
+			name:    "incompatible argument type in function pointer call",
+			source:  `typedef int (*Op)(int, int); int add(int a, int b) { return a + b; } int Start() { Op fn = add; return fn(1, "hello"); }`,
+			wantErr: `incompatible type for argument 2 in function call`,
+		},
+		{
+			name:    "calling integer variable",
+			source:  `int Start() { int x = 10; return x(5); }`,
+			wantErr: `called object of type "int" is not a function`,
+		},
+		{
+			name:    "assigning function to non-function variable",
+			source:  `int add(int a, int b) { return a + b; } int Start() { int x = add; return x; }`,
+			wantErr: `incompatible type in initialization of "x"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyzeSource(t, tt.source)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func TestAnalyzeLocalVariablesAndReturnStatements(t *testing.T) {
 	tests := []struct {
 		name    string

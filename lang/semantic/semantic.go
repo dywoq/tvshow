@@ -477,6 +477,21 @@ func (a *Analyzer) typeFromDeclarator(baseType Type, declarator parser.Declarato
 		}
 	}
 
+	for _, ptr := range declarator.FuncPointers {
+		ptrConst := false
+		for _, q := range ptr.Qualifiers {
+			if q.Type == token.CONST {
+				ptrConst = true
+			}
+		}
+		target := curType
+		curType = Type{
+			Kind:    TypePointer,
+			IsConst: ptrConst,
+			Base:    &target,
+		}
+	}
+
 	return curType
 }
 
@@ -869,8 +884,9 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			argTypes[i] = a.expression(argument)
 		}
 
-		if ft.Kind == TypePointer && ft.Base != nil && ft.Base.Kind == TypeFunction {
-			ft = *ft.Base
+		funcType, isFunc := unwrapFunc(ft)
+		if isFunc {
+			ft = funcType
 		}
 
 		if ft.Kind == TypeFunction {
@@ -891,7 +907,7 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 			return Type{Kind: TypeVoid}
 		} else if ft.Kind == TypeAuto {
 			return Type{Kind: TypeAuto}
-		} else if ft.Kind != TypeUnknown && ft.Kind != TypeInt && ft.Kind != TypePointer {
+		} else if ft.Kind != TypeUnknown {
 			a.problem(e.Open.Pos, "called object of type %q is not a function", ft.String())
 		}
 		return Type{Kind: TypeUnknown}
@@ -1010,10 +1026,71 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 	return Type{Kind: TypeUnknown}
 }
 
+func unwrapFunc(t Type) (Type, bool) {
+	for t.Kind == TypePointer && t.Base != nil {
+		t = *t.Base
+	}
+	if t.Kind == TypeFunction {
+		return t, true
+	}
+	return Type{}, false
+}
+
+func (a *Analyzer) isFuncCompatible(target, source Type) bool {
+	if target.ReturnType != nil && source.ReturnType != nil {
+		if !a.isCompatible(*target.ReturnType, *source.ReturnType) {
+			return false
+		}
+	} else if (target.ReturnType == nil) != (source.ReturnType == nil) {
+		return false
+	}
+
+	if target.Variadic != source.Variadic {
+		return false
+	}
+
+	if len(target.Params) != len(source.Params) {
+		return false
+	}
+
+	for i := 0; i < len(target.Params); i++ {
+		if !a.isCompatible(target.Params[i], source.Params[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (a *Analyzer) isCompatible(target, source Type) bool {
 	if target.Kind == TypeUnknown || source.Kind == TypeUnknown || target.Kind == TypeAuto || source.Kind == TypeAuto {
 		return true
 	}
+
+	targetFunc, isTargetFunc := unwrapFunc(target)
+	sourceFunc, isSourceFunc := unwrapFunc(source)
+
+	if isTargetFunc || isSourceFunc {
+		if isTargetFunc && isSourceFunc {
+			return a.isFuncCompatible(targetFunc, sourceFunc)
+		}
+		if isTargetFunc {
+			if isZeroLiteral(source) {
+				return true
+			}
+			if source.Kind == TypePointer && source.Base != nil && source.Base.Kind == TypeVoid {
+				return true
+			}
+			return false
+		}
+		if isSourceFunc {
+			if target.Kind == TypePointer && target.Base != nil && target.Base.Kind == TypeVoid {
+				return true
+			}
+			return false
+		}
+	}
+
 	if target.Kind == source.Kind {
 		switch target.Kind {
 		case TypeStruct, TypeUnion:
@@ -1068,10 +1145,6 @@ func (a *Analyzer) isCompatible(target, source Type) bool {
 		if source.Kind == TypeChar || (source.Kind == TypeArray && source.Base != nil && source.Base.Kind == TypeChar) || (source.Kind == TypePointer && source.Base != nil && source.Base.Kind == TypeChar) {
 			return true
 		}
-	}
-
-	if target.Kind == TypeFunction && (source.Kind == TypePointer || source.Kind == TypeInt) {
-		return true
 	}
 
 	return false

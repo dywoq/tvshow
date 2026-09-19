@@ -270,9 +270,10 @@ func TestCallFunctionValueInVariable(t *testing.T) {
 	})
 
 	program := programFromSource(t, `
-		int get_fn();
+		typedef int (*FuncAlias)(int);
+		FuncAlias get_fn();
 		int Start() {
-			int f = get_fn();
+			FuncAlias f = get_fn();
 			return f(32);
 		}`)
 	interp := New(program)
@@ -368,6 +369,35 @@ func TestRunExecutesAutoType(t *testing.T) {
 	}
 	if got != "hello world" {
 		t.Errorf("Run = %#v, want %q", got, "hello world")
+	}
+}
+
+func TestRunFunctionPointersInStructAndDereference(t *testing.T) {
+	program := programFromSource(t, `
+		typedef int (*MathFunc)(int, int);
+
+		typedef struct Calculator {
+			MathFunc op;
+		} Calculator;
+
+		int add(int a, int b) { return a + b; }
+		int sub(int a, int b) { return a - b; }
+
+		int Start() {
+			Calculator calc;
+			calc.op = &add;
+			int res1 = calc.op(10, 20);
+			calc.op = sub;
+			int res2 = (*calc.op)(50, 15);
+			return res1 + res2;
+		}`)
+
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(30+35) {
+		t.Errorf("Run = %#v, want 65", got)
 	}
 }
 

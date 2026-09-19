@@ -102,7 +102,7 @@ func WrapFuncWithInterpreter(interp *Interpreter, fn any) (Function, error) {
 
 		for p := 0; p < normalParamCount; p++ {
 			paramType := fnType.In(paramStartIdx + p)
-			val, err := convertValue(remainingArgs[p], paramType)
+			val, err := convertValueWithInterpreter(interp, remainingArgs[p], paramType)
 			if err != nil {
 				return nil, fmt.Errorf("argument %d: %w", p, err)
 			}
@@ -114,7 +114,7 @@ func WrapFuncWithInterpreter(interp *Interpreter, fn any) (Function, error) {
 			elemType := varSliceType.Elem()
 			varArgs := remainingArgs[normalParamCount:]
 			for p, varArg := range varArgs {
-				val, err := convertValue(varArg, elemType)
+				val, err := convertValueWithInterpreter(interp, varArg, elemType)
 				if err != nil {
 					return nil, fmt.Errorf("variadic argument %d: %w", p, err)
 				}
@@ -209,6 +209,10 @@ func normalizeReturnValue(v any) any {
 }
 
 func convertValue(v any, targetType reflect.Type) (reflect.Value, error) {
+	return convertValueWithInterpreter(nil, v, targetType)
+}
+
+func convertValueWithInterpreter(interp *Interpreter, v any, targetType reflect.Type) (reflect.Value, error) {
 	if addr, ok := v.(address); ok {
 		if targetType != reflect.TypeOf(address{}) {
 			v = addr.get()
@@ -223,6 +227,78 @@ func convertValue(v any, targetType reflect.Type) (reflect.Value, error) {
 
 	if vVal.Type().AssignableTo(targetType) {
 		return vVal, nil
+	}
+
+	functionType := reflect.TypeOf((*Function)(nil)).Elem()
+	if targetType == functionType && interp != nil {
+		if fn, err := interp.ToFunction(v); err == nil {
+			return reflect.ValueOf(fn), nil
+		}
+	}
+
+	if targetType.Kind() == reflect.Func {
+		var fn Function
+		if interp != nil {
+			if f, err := interp.ToFunction(v); err == nil {
+				fn = f
+			}
+		} else if f, ok := v.(Function); ok {
+			fn = f
+		} else if f, ok := v.(func([]any) (any, error)); ok {
+			fn = Function(f)
+		}
+
+		if fn != nil {
+			makeFunc := reflect.MakeFunc(targetType, func(in []reflect.Value) []reflect.Value {
+				args := make([]any, len(in))
+				for i, argVal := range in {
+					args[i] = normalizeReturnValue(argVal.Interface())
+				}
+				res, err := fn(args)
+
+				numOut := targetType.NumOut()
+				out := make([]reflect.Value, numOut)
+				if numOut == 0 {
+					return out
+				}
+
+				hasErrRet := targetType.Out(numOut - 1).Implements(errorType)
+				if hasErrRet {
+					if err != nil {
+						out[numOut-1] = reflect.ValueOf(err)
+					} else {
+						out[numOut-1] = reflect.Zero(targetType.Out(numOut - 1))
+					}
+				} else if err != nil {
+					panic(err)
+				}
+
+				valCount := numOut
+				if hasErrRet {
+					valCount--
+				}
+
+				if valCount == 1 {
+					if resVal, convErr := convertValueWithInterpreter(interp, res, targetType.Out(0)); convErr == nil {
+						out[0] = resVal
+					} else {
+						out[0] = reflect.Zero(targetType.Out(0))
+					}
+				} else if valCount > 1 {
+					if resSlice, ok := res.([]any); ok {
+						for i := 0; i < valCount && i < len(resSlice); i++ {
+							if resVal, convErr := convertValueWithInterpreter(interp, resSlice[i], targetType.Out(i)); convErr == nil {
+								out[i] = resVal
+							} else {
+								out[i] = reflect.Zero(targetType.Out(i))
+							}
+						}
+					}
+				}
+				return out
+			})
+			return makeFunc, nil
+		}
 	}
 
 	if targetType.Kind() == reflect.Interface {
