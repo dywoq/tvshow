@@ -1,4 +1,4 @@
- package core
+package core
 
 import (
 	"runtime"
@@ -78,4 +78,9 @@ func (p *PanicManager) Pop() {
 		return
 	}
 	p.handles = slices.Delete(p.handles, len(p.handles)-1, len(p.handles))
+}
+
+// Empty reports whether the underlying stack is empty or not.
+func (p *PanicManager) Empty() bool {
+	return len(p.handles) == 0
 }
