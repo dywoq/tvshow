@@ -163,6 +163,9 @@ const (
 	COMPLEX   // _Complex
 	IMAGINARY // _Imaginary
 	STRING_KW // string
+	THROW     // throw
+	TRY       // try
+	CATCH     // catch
 
 	keywordEnd
 )
@@ -269,6 +272,9 @@ var (
 		COMPLEX:   "_Complex",
 		IMAGINARY: "_Imaginary",
 		STRING_KW: "string",
+		THROW:     "throw",
+		TRY:       "try",
+		CATCH:     "catch",
 	}
 	keywords = map[string]TokenType{
 		"auto":       AUTO,
@@ -303,6 +309,9 @@ var (
 		"_Complex":   COMPLEX,
 		"_Imaginary": IMAGINARY,
 		"string":     STRING_KW,
+		"throw":      THROW,
+		"try":        TRY,
+		"catch":      CATCH,
 	}
 )
 

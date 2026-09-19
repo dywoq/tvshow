@@ -374,6 +374,52 @@ func TestAnalyzeFunctionAliasesAndStrictTypes(t *testing.T) {
 	}
 }
 
+func TestAnalyzeExceptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name:   "valid string exception throw and catch",
+			source: `int Divide(int a, int b) { if (b == 0) throw "division by zero"; return a / b; } void Start() { try { int res = Divide(10, 0); } catch (string exception) { string msg = exception; } }`,
+		},
+		{
+			name:    "throw integer exception",
+			source:  `void Start() { throw 42; }`,
+			wantErr: `cannot throw non-string exception of type "int"`,
+		},
+		{
+			name:    "throw struct exception",
+			source:  `typedef struct Err { int code; } Err; void Start() { Err e; throw e; }`,
+			wantErr: `cannot throw non-string exception of type "struct Err"`,
+		},
+		{
+			name:    "catch non-string type",
+			source:  `void Start() { try { int x = 1; } catch (int err) { int y = err; } }`,
+			wantErr: `catch parameter type must be string (got "int")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyzeSource(t, tt.source)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func TestAnalyzeLocalVariablesAndReturnStatements(t *testing.T) {
 	tests := []struct {
 		name    string

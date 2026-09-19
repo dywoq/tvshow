@@ -424,6 +424,55 @@ func (p *Parser) parseStmt() (Statement, error) {
 		}
 		n.Semi, e = p.expect(token.SEMICOLON)
 		return n, e
+	case token.THROW:
+		p.next()
+		val, e := p.expr(1)
+		if e != nil {
+			return nil, e
+		}
+		semi, e := p.expect(token.SEMICOLON)
+		if e != nil {
+			return nil, e
+		}
+		return &ThrowStmt{Token: t, Value: val, Semi: semi}, nil
+	case token.TRY:
+		p.next()
+		body, e := p.parseBlock()
+		if e != nil {
+			return nil, e
+		}
+		catchTok, e := p.expect(token.CATCH)
+		if e != nil {
+			return nil, e
+		}
+		if _, e = p.expect(token.LPAREN); e != nil {
+			return nil, e
+		}
+		specs, e := p.parseSpecs()
+		if e != nil {
+			return nil, e
+		}
+		decl, e := p.parseDeclarator()
+		if e != nil {
+			return nil, e
+		}
+		if _, e = p.expect(token.RPAREN); e != nil {
+			return nil, e
+		}
+		catchBody, e := p.parseBlock()
+		if e != nil {
+			return nil, e
+		}
+		return &TryCatchStmt{
+			Token: t,
+			Body:  body,
+			Catch: &CatchBlock{
+				Token:      catchTok,
+				VarType:    specs,
+				Declarator: decl,
+				Body:       catchBody,
+			},
+		}, nil
 	}
 	if t.Type == token.IDENT && p.i+1 < len(p.tokens) && p.tokens[p.i+1].Type == token.COLON {
 		p.next()
