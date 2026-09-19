@@ -95,6 +95,90 @@ func (i Instruction) MarshalBinary() ([]byte, error) {
 // Bytes is a convenience alias for MarshalBinary.
 func (i Instruction) Bytes() ([]byte, error) { return i.MarshalBinary() }
 
+// UnmarshalBinary decodes a binary representation of an instruction into i.
+// It implements encoding.BinaryUnmarshaler.
+func (i *Instruction) UnmarshalBinary(data []byte) error {
+	ins, err := DecodeInstruction(data)
+	if err != nil {
+		return err
+	}
+	*i = ins
+	return nil
+}
+
+// DecodeInstruction decodes the stable binary form created by Instruction.MarshalBinary.
+func DecodeInstruction(data []byte) (Instruction, error) {
+	var z Instruction
+	if len(data) < 3 {
+		return z, fmt.Errorf("bytecode: truncated instruction")
+	}
+	if data[0] != binaryInstructionVersion {
+		return z, fmt.Errorf("bytecode: unsupported instruction binary version %d", data[0])
+	}
+	op, ok := decodeOpcode(data[1])
+	if !ok {
+		return z, fmt.Errorf("bytecode: unknown binary opcode %d", data[1])
+	}
+	p := 3
+	readString := func() (string, error) {
+		if len(data)-p < 4 {
+			return "", fmt.Errorf("bytecode: truncated string")
+		}
+		n := int(binary.BigEndian.Uint32(data[p:]))
+		p += 4
+		if n < 0 || len(data)-p < n {
+			return "", fmt.Errorf("bytecode: truncated string")
+		}
+		s := string(data[p : p+n])
+		p += n
+		return s, nil
+	}
+	var operand any
+	switch data[2] {
+	case binaryOperandNone:
+	case binaryOperandString:
+		s, e := readString()
+		if e != nil {
+			return z, e
+		}
+		operand = s
+	case binaryOperandInt:
+		if len(data)-p < 8 {
+			return z, fmt.Errorf("bytecode: truncated integer operand")
+		}
+		operand = int(int64(binary.BigEndian.Uint64(data[p:])))
+		p += 8
+	default:
+		return z, fmt.Errorf("bytecode: unknown operand kind %d", data[2])
+	}
+	filename, e := readString()
+	if e != nil {
+		return z, e
+	}
+	if len(data)-p != 24 {
+		return z, fmt.Errorf("bytecode: invalid source position")
+	}
+	pos := token.Position{
+		Filename: filename,
+		Line:     int(int64(binary.BigEndian.Uint64(data[p:]))),
+		Column:   int(int64(binary.BigEndian.Uint64(data[p+8:]))),
+		Offset:   int(int64(binary.BigEndian.Uint64(data[p+16:]))),
+	}
+	return Instruction{Opcode: op, Operand: operand, Position: pos}, nil
+}
+
+func decodeOpcode(n byte) (Opcode, bool) {
+	ops := []Opcode{
+		"", Declare, PushLiteral, Load, Address, AddressIndex, AddressMember,
+		LoadIndirect, StoreIndirect, Unary, ToBool, Binary, Dup, Rotate, Pop,
+		Call, Jump, JumpIfFalse, JumpIfTrue, Return, MakeArray, MakeStruct, Convert,
+	}
+	if int(n) >= len(ops) || n == 0 {
+		return "", false
+	}
+	return ops[n], true
+}
+
 func writeOperand(out *bytes.Buffer, operand any) error {
 	switch value := operand.(type) {
 	case nil:
@@ -119,6 +203,17 @@ func writeString(out *bytes.Buffer, value string) error {
 		return err
 	}
 	_, err := out.WriteString(value)
+	return err
+}
+
+func writeBytes(out *bytes.Buffer, value []byte) error {
+	if uint64(len(value)) > math.MaxUint32 {
+		return fmt.Errorf("bytecode: byte payload is too large")
+	}
+	if err := binary.Write(out, binary.BigEndian, uint32(len(value))); err != nil {
+		return err
+	}
+	_, err := out.Write(value)
 	return err
 }
 
@@ -181,11 +276,187 @@ type Function struct {
 	Code       []Instruction
 }
 
+const binaryProgramVersion byte = 1
+
 // Program is a complete translation unit. Globals runs once before any
 // function invocation; Functions retains source declaration order.
 type Program struct {
 	Globals   []Instruction
 	Functions []Function
+}
+
+// MarshalBinary serializes the whole bytecode Program into a binary view.
+// It implements encoding.BinaryMarshaler.
+func (p *Program) MarshalBinary() ([]byte, error) {
+	if p == nil {
+		return nil, fmt.Errorf("bytecode: cannot marshal nil program")
+	}
+	var out bytes.Buffer
+	out.WriteByte(binaryProgramVersion)
+
+	if err := binary.Write(&out, binary.BigEndian, uint32(len(p.Globals))); err != nil {
+		return nil, err
+	}
+	for _, ins := range p.Globals {
+		buf, err := ins.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if err := writeBytes(&out, buf); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := binary.Write(&out, binary.BigEndian, uint32(len(p.Functions))); err != nil {
+		return nil, err
+	}
+	for _, fn := range p.Functions {
+		if err := writeString(&out, fn.Name); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(&out, binary.BigEndian, uint32(len(fn.Parameters))); err != nil {
+			return nil, err
+		}
+		for _, param := range fn.Parameters {
+			if err := writeString(&out, param); err != nil {
+				return nil, err
+			}
+		}
+		if err := binary.Write(&out, binary.BigEndian, uint32(len(fn.Code))); err != nil {
+			return nil, err
+		}
+		for _, ins := range fn.Code {
+			buf, err := ins.MarshalBinary()
+			if err != nil {
+				return nil, err
+			}
+			if err := writeBytes(&out, buf); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out.Bytes(), nil
+}
+
+// Bytes is a convenience alias for MarshalBinary.
+func (p *Program) Bytes() ([]byte, error) { return p.MarshalBinary() }
+
+// UnmarshalBinary restores a bytecode Program from its binary view.
+// It implements encoding.BinaryUnmarshaler.
+func (p *Program) UnmarshalBinary(data []byte) error {
+	if len(data) < 1 {
+		return fmt.Errorf("bytecode: truncated program binary")
+	}
+	if data[0] != binaryProgramVersion {
+		return fmt.Errorf("bytecode: unsupported program binary version %d", data[0])
+	}
+	idx := 1
+
+	readBytes := func() ([]byte, error) {
+		if len(data)-idx < 4 {
+			return nil, fmt.Errorf("bytecode: truncated bytes length")
+		}
+		n := int(binary.BigEndian.Uint32(data[idx:]))
+		idx += 4
+		if n < 0 || len(data)-idx < n {
+			return nil, fmt.Errorf("bytecode: truncated bytes payload")
+		}
+		b := data[idx : idx+n]
+		idx += n
+		return b, nil
+	}
+
+	readString := func() (string, error) {
+		b, err := readBytes()
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	}
+
+	readUint32 := func() (uint32, error) {
+		if len(data)-idx < 4 {
+			return 0, fmt.Errorf("bytecode: truncated uint32")
+		}
+		v := binary.BigEndian.Uint32(data[idx:])
+		idx += 4
+		return v, nil
+	}
+
+	numGlobals, err := readUint32()
+	if err != nil {
+		return err
+	}
+	globals := make([]Instruction, numGlobals)
+	for i := uint32(0); i < numGlobals; i++ {
+		insBytes, err := readBytes()
+		if err != nil {
+			return err
+		}
+		ins, err := DecodeInstruction(insBytes)
+		if err != nil {
+			return err
+		}
+		globals[i] = ins
+	}
+
+	numFunctions, err := readUint32()
+	if err != nil {
+		return err
+	}
+	functions := make([]Function, numFunctions)
+	for i := uint32(0); i < numFunctions; i++ {
+		name, err := readString()
+		if err != nil {
+			return err
+		}
+		numParams, err := readUint32()
+		if err != nil {
+			return err
+		}
+		params := make([]string, numParams)
+		for j := uint32(0); j < numParams; j++ {
+			pName, err := readString()
+			if err != nil {
+				return err
+			}
+			params[j] = pName
+		}
+		numCode, err := readUint32()
+		if err != nil {
+			return err
+		}
+		code := make([]Instruction, numCode)
+		for j := uint32(0); j < numCode; j++ {
+			insBytes, err := readBytes()
+			if err != nil {
+				return err
+			}
+			ins, err := DecodeInstruction(insBytes)
+			if err != nil {
+				return err
+			}
+			code[j] = ins
+		}
+		functions[i] = Function{
+			Name:       name,
+			Parameters: params,
+			Code:       code,
+		}
+	}
+
+	p.Globals = globals
+	p.Functions = functions
+	return nil
+}
+
+// DecodeProgram decodes a complete Program from a binary byte stream.
+func DecodeProgram(data []byte) (*Program, error) {
+	p := &Program{}
+	if err := p.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // Error reports an AST construct that cannot be represented by the current

@@ -85,6 +85,85 @@ func TestTranslateControlFlowAndAssignments(t *testing.T) {
 	}
 }
 
+func TestProgramMarshalAndUnmarshalBinaryRoundtrip(t *testing.T) {
+	source := `
+		int g = 10;
+		int Multiply(int a, int b) {
+			return a * b + g;
+		}
+		int Start() {
+			return Multiply(2, 3);
+		}`
+	original := translateSource(t, source)
+
+	data, err := original.MarshalBinary()
+	if err != nil {
+		t.Fatalf("Program.MarshalBinary: %v", err)
+	}
+
+	bytesData, err := original.Bytes()
+	if err != nil || string(bytesData) != string(data) {
+		t.Fatalf("Program.Bytes() does not match MarshalBinary output")
+	}
+
+	decoded, err := DecodeProgram(data)
+	if err != nil {
+		t.Fatalf("DecodeProgram: %v", err)
+	}
+
+	if len(decoded.Globals) != len(original.Globals) {
+		t.Fatalf("decoded globals count = %d, want %d", len(decoded.Globals), len(original.Globals))
+	}
+	if len(decoded.Functions) != len(original.Functions) {
+		t.Fatalf("decoded functions count = %d, want %d", len(decoded.Functions), len(original.Functions))
+	}
+
+	for i, origFn := range original.Functions {
+		decFn := decoded.Functions[i]
+		if decFn.Name != origFn.Name {
+			t.Errorf("function %d name = %q, want %q", i, decFn.Name, origFn.Name)
+		}
+		if len(decFn.Parameters) != len(origFn.Parameters) {
+			t.Errorf("function %d parameters count = %d, want %d", i, len(decFn.Parameters), len(origFn.Parameters))
+		} else {
+			for j, p := range origFn.Parameters {
+				if decFn.Parameters[j] != p {
+					t.Errorf("function %d param %d = %q, want %q", i, j, decFn.Parameters[j], p)
+				}
+			}
+		}
+		if len(decFn.Code) != len(origFn.Code) {
+			t.Errorf("function %d code len = %d, want %d", i, len(decFn.Code), len(origFn.Code))
+		} else {
+			for j, origIns := range origFn.Code {
+				decIns := decFn.Code[j]
+				if decIns.Opcode != origIns.Opcode {
+					t.Errorf("fn %s ins %d opcode = %v, want %v", origFn.Name, j, decIns.Opcode, origIns.Opcode)
+				}
+				if decIns.Operand != origIns.Operand {
+					t.Errorf("fn %s ins %d operand = %#v, want %#v", origFn.Name, j, decIns.Operand, origIns.Operand)
+				}
+				if decIns.Position != origIns.Position {
+					t.Errorf("fn %s ins %d position = %v, want %v", origFn.Name, j, decIns.Position, origIns.Position)
+				}
+			}
+		}
+	}
+}
+
+func TestProgramUnmarshalBinaryRejectsCorruptedData(t *testing.T) {
+	var p Program
+	if err := p.UnmarshalBinary([]byte{}); err == nil {
+		t.Error("UnmarshalBinary accepted empty slice")
+	}
+	if err := p.UnmarshalBinary([]byte{99}); err == nil {
+		t.Error("UnmarshalBinary accepted invalid version")
+	}
+	if _, err := DecodeProgram([]byte{1, 0, 0, 0}); err == nil {
+		t.Error("DecodeProgram accepted truncated data")
+	}
+}
+
 func TestTranslateCompoundLiteralsAndInitializerLists(t *testing.T) {
 	source := `
 		typedef struct CalculationResult { int A; int B; } CalculationResult;
