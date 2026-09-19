@@ -906,8 +906,10 @@ func (c *compiler) address(e parser.Expression) error {
 		}
 		return c.expr(e.Operand)
 	case *parser.IndexExpr:
-		if err := c.expr(e.Value); err != nil {
-			return err
+		if err := c.address(e.Value); err != nil {
+			if err := c.expr(e.Value); err != nil {
+				return err
+			}
 		}
 		if err := c.expr(e.Index); err != nil {
 			return err
@@ -920,7 +922,9 @@ func (c *compiler) address(e parser.Expression) error {
 			}
 		} else {
 			if err := c.address(e.Value); err != nil {
-				return err
+				if err := c.expr(e.Value); err != nil {
+					return err
+				}
 			}
 		}
 		c.emit(AddressMember, e.Member.Literal, e.Operator.Pos)

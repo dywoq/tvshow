@@ -396,7 +396,7 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			}
 			var values []any
 			if ad, ok := base.(address); ok {
-				if ad.get() == nil {
+				if ad.get() == nil || isZero(ad.get()) {
 					ad.set(make([]any, int(n)+1))
 				}
 				v, ok := ad.get().([]any)
@@ -468,6 +468,16 @@ func (i *Interpreter) call(ref functionRef, args []any) (any, error) {
 		local.vars[f.Parameters[n]] = &cell{v}
 	}
 	return i.executeFunc(ref.name, f.Code, args, local)
+}
+
+func isZero(v any) bool {
+	if v == nil {
+		return true
+	}
+	if n, err := integer(v); err == nil {
+		return n == 0
+	}
+	return false
 }
 
 func boolInt(v bool) int64 {

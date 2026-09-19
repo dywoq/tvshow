@@ -142,3 +142,28 @@ func TestTranslateShortCircuitAndGlobals(t *testing.T) {
 		t.Errorf("short circuit instructions not emitted: %#v", seen)
 	}
 }
+
+func TestTranslateStructArrayMembers(t *testing.T) {
+	source := `
+		typedef struct _VECTORSTR {
+			string List[];
+		} VECTORSTR;
+		string Start() {
+			VECTORSTR Vector = (VECTORSTR){0};
+			Vector.List[0] = "Hi!";
+			return Vector.List[0];
+		}`
+	program := translateSource(t, source)
+	if len(program.Functions) != 1 {
+		t.Fatalf("functions = %d, want 1", len(program.Functions))
+	}
+	seen := map[Opcode]bool{}
+	for _, ins := range program.Functions[0].Code {
+		seen[ins.Opcode] = true
+	}
+	for _, opcode := range []Opcode{AddressMember, AddressIndex, StoreIndirect, LoadIndirect} {
+		if !seen[opcode] {
+			t.Errorf("missing %s instruction in translation", opcode)
+		}
+	}
+}
