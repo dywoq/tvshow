@@ -70,7 +70,7 @@ Source Code (.sc)
       │
       ▼
 ┌───────────┐
-│ Semantic  │  (lang/semantic) Validates identifiers, scopes, lvalues, break/continue/switch flow.
+│ Semantic  │  (lang/semantic) Performs strict type, qualifier (const), scope, and control-flow checks.
 └─────┬─────┘
       │
       ▼
@@ -135,12 +135,16 @@ Constructs an AST from preprocessed tokens.
   - `Parse(tokens []token.Token) (*Program, error)`
 
 ### 5. `lang/semantic`
-Validates AST semantics prior to bytecode translation.
+Validates AST semantics, types, and qualifiers prior to bytecode translation.
 - **Validation Checks:**
-  - Identifier resolution and scope tracking (separate symbol tables for values and types).
-  - Function predeclarations and redefinition detection.
-  - Lvalue assignability verification for assignment targets (`=`, `+=`, etc.).
-  - Control-flow validity: `break` and `continue` inside loops, `break` inside switches, `case`/`default` inside switch statements, and `goto` target label resolution within functions.
+  - **Qualifier Checks (`const`):** Enforces immutability for `const` variables, `const` struct fields, fields of `const` struct instances, elements of `const` arrays, and target values of pointers-to-const. Rejects assignments (`=`, `+=`, etc.) and modifications (`++`, `--`) targeting `const` lvalues. Requires initializers for local `const` variables.
+  - **Array Checks:** Verifies subscripted expressions are arrays, pointers, or strings and subscript indices are integers. Enforces non-negative array bounds, rejects arrays with `void` element types, and validates initializer list bounds against fixed array sizes.
+  - **Struct & Union Field Checks:** Disallows fields of type `void`, checks for duplicate member names within aggregate declarations, verifies member access operators (`.` on structs/unions vs `->` on struct/union pointers), and validates member existence.
+  - **Function Parameters & Call Checks:** Rejects named parameters declared with `void` type, enforces exact argument count and parameter type compatibility for function calls, and verifies called expressions are callable objects.
+  - **Local Variables & Declarations:** Rejects variables declared with `void` type, enforces type compatibility between variable declarations and initializers, and tracks scope/identifier symbol tables.
+  - **Return Statements:** Enforces that `void` functions do not return values, non-void functions return a value, and return expression types match function return types.
+  - **Expression & Operator Type Checks:** Enforces operand constraints for bitwise operators (integers only), unary operators, binary arithmetic, switch statement quantities, and condition expressions.
+  - **Control Flow & Scopes:** Validates `break`/`continue` within loops/switches, `case`/`default` inside switch statements, and `goto` label targets.
 - **Key Functions:**
   - `Analyze(program *parser.Program) error`
 
@@ -310,23 +314,23 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | C99 Statement Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
 | Selection (`if`, `if`-`else`) | **Supported** | Translated to conditional jumps. |
-| `switch`, `case`, `default` | **Supported** | Full switch statement lowerings with fall-through support and case label validation. |
+| `switch`, `case`, `default` | **Supported** | Full switch statement lowerings with fall-through support, integer quantity checks, and case label validation. |
 | Iteration (`while`, `do`-`while`) | **Supported** | Translated to jump constructs. |
 | `for` Loops | **Supported** | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`). |
-| Jump Statements (`break`, `continue`) | **Supported** | Validated during semantic pass for enclosing loop/switch scopes. |
+| Jump Statements (`break`, `continue`, `return`) | **Supported** | Validated during semantic pass for enclosing loop/switch scopes, void vs non-void returns, and return expression type compatibility. |
 | `goto` & Labeled Statements | **Supported** | Resolved to instruction jump targets in function context. |
-| `return` | **Supported** | Supports void and value returns. |
+| `return` | **Supported** | Enforces void vs non-void function return value rules and type compatibility. |
 
 ### 4. Declarations & Types
 
 | C99 Type / Declaration Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
-| Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. |
-| Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing and runtime `map[string]any` field member access (`.` and `->`). |
+| Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, semantically validated, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. `void` checked for invalid variable, field, or parameter declarations. |
+| Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing, duplicate member validation, void member rejection, member access operator validation (`.` vs `->`), and runtime `map[string]any` field access. |
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
 | Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
-| Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; runtime array indexing supported. |
-| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Partially Supported** | Parsed in type specifiers/declarators. Storage duration semantics (`static` persistence) and qualifiers are not enforced by VM execution. Note: `register`, `volatile`, and `restrict` keywords have been removed. |
+| Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking. |
+| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Supported** (for `const`) | `const` qualifiers strictly enforced by semantic analyzer for variables, struct fields, array elements, and pointer target dereferences. Storage duration specifiers (`static`, `extern`, `auto`, `inline`) parsed. Note: `register`, `volatile`, and `restrict` keywords removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
 
 ### 5. Expressions & Operators
@@ -334,17 +338,17 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | C99 Expression Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
 | Primary Expressions & Identifiers | **Supported** | Identifiers, constants, string literals, parenthesized expressions. |
-| Postfix / Prefix (`++`, `--`) | **Supported** | Address-based update semantics (`Rotate` opcode preserves postfix value). |
-| Unary Operators (`+`, `-`, `!`, `~`) | **Supported** | Integer and floating-point unary evaluation. |
-| Address-Of (`&`) & Dereference (`*`) | **Supported** | Syntax and lvalue address resolution supported; raw physical memory addresses are omitted. |
-| Binary Arithmetic & Bitwise Operators | **Supported** | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. |
-| Relational & Equality Operators | **Supported** | `<`, `>`, `<=`, `>=`, `==`, `!=`. |
+| Postfix / Prefix (`++`, `--`) | **Supported** | Address-based update semantics (`Rotate` opcode preserves postfix value); semantic analyzer rejects modification of `const` lvalues. |
+| Unary Operators (`+`, `-`, `!`, `~`) | **Supported** | Integer and floating-point unary evaluation with operand type checks. |
+| Address-Of (`&`) & Dereference (`*`) | **Supported** | Syntax and lvalue address resolution supported; dereferencing pointers to `const` produces read-only lvalues. |
+| Binary Arithmetic & Bitwise Operators | **Supported** | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. Bitwise operators strictly restricted to integer operands. |
+| Relational & Equality Operators | **Supported** | `<`, `>`, `<=`, `>=`, `==`, `!=` with type compatibility checking. |
 | Logical Operators (`&&`, `\|\|`) | **Supported** | Short-circuit evaluation retained via conditional jumps. |
-| Conditional Operator (`?:`) | **Supported** | Short-circuit ternary evaluation retained via conditional jumps. |
-| Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. |
+| Conditional Operator (`?:`) | **Supported** | Short-circuit ternary evaluation retained via conditional jumps with branch type compatibility checking. |
+| Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement. |
 | Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
-| Function Calls | **Supported** | Argument stack lowering for guest and host function invocations. |
-| Cast Expressions (`(type)expr`) | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not enforce dynamic cast conversions. |
+| Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations. |
+| Cast Expressions (`(type)expr`) | **Supported** | Parsed and type-checked during semantic analysis. |
 | `sizeof` Operator | **Supported** | Evaluates string length for string operands or byte size for type specifiers / expressions. |
 | Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
 | `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |
