@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
+
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,6 +12,7 @@ import (
 	"tvshow/lang/lexer"
 	"tvshow/lang/macro"
 	"tvshow/lang/parser"
+	"tvshow/lang/token"
 )
 
 func Build() *cobra.Command {
@@ -25,6 +28,10 @@ func Build() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			includeDirs, err := cmd.Flags().GetStringSlice("include_dirs")
+			if err != nil {
+				return err
+			}
 
 			content, err := os.ReadFile(sourcePath)
 			if err != nil {
@@ -35,6 +42,17 @@ func Build() *cobra.Command {
 			tokens := l.Tokens()
 
 			expander := macro.New()
+			expander.Include = func(name string, pos token.Position) ([]token.Token, error) {
+				for _, include := range includeDirs {
+					file := filepath.Join(include, name)
+					content, err := os.ReadFile(file)
+					if err != nil {
+						continue
+					}
+					return lexer.New(file, string(content)).Tokens(), nil
+				}
+				return nil, fmt.Errorf("cannot find %q in the following include dirs: %v", name, includeDirs)
+			}
 			expandedTokens, err := expander.Expand(tokens)
 			if err != nil {
 				return fmt.Errorf("macro expansion failed: %w", err)
@@ -64,5 +82,6 @@ func Build() *cobra.Command {
 	}
 	b.Flags().String("destination", "a.scb", "where to write compiled bytecode")
 	b.Flags().String("source", "main.sc", "your source file")
+	b.Flags().StringSlice("include_dirs", []string{"include/"}, "your include directories")
 	return b
 }

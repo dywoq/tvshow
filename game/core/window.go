@@ -9,12 +9,12 @@ import (
 // Window consists of the game window configuration settings.
 // It provides a way to run the game.
 type Window struct {
-	Width       int
-	Height      int
-	Title       string
-	Executors   []Executor
-	Initializes []Initializer
-	Cleaners    []Cleaner
+	Width        int
+	Height       int
+	Title        string
+	Executors    []Executor
+	Initializers []Initializer
+	Cleaners     []Cleaner
 }
 
 // Executor is a function that is executed every frame.
@@ -52,9 +52,25 @@ func (e *ebitenWindow) Layout(int, int) (int, int) {
 
 // Run sets the window settings up and starts the game.
 func (w *Window) Run() error {
+	for _, init := range w.Initializers {
+		err := init()
+		if err != nil {
+			return fmt.Errorf("one of the initializers failed: %v", err)
+		}
+	}
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle(w.Title)
-	return ebiten.RunGame(&ebitenWindow{
+	err := ebiten.RunGame(&ebitenWindow{
 		w: w,
 	})
+	if err != nil {
+		return fmt.Errorf("running the game failed: %v", err)
+	}
+	for _, clean := range w.Cleaners {
+		err := clean()
+		if err != nil {
+			return fmt.Errorf("one of the cleaners failed: %v", err)
+		}
+	}
+	return nil
 }

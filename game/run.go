@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"tvshow/game/core"
+	"tvshow/game/program"
 	"tvshow/game/runtime"
 )
 
@@ -14,6 +15,9 @@ func Run() error {
 		Title:  "ТВ Шоу 2",
 		Executors: []core.Executor{
 			runtime.TaskExecutor,
+		},
+		Initializers: []core.Initializer{
+			program.Initializer,
 		},
 	}
 	if err := w.Run(); err != nil {
