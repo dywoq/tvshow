@@ -394,6 +394,33 @@ func (c *compiler) declaration(d *parser.VarDecl) error {
 	return nil
 }
 
+func (c *compiler) typeSize(specs []parser.TypeSpec, decl parser.Declarator) int {
+	baseSize := 8
+	if len(specs) > 0 {
+		ts := typeSpecsString(specs)
+		if ts == "char" {
+			baseSize = 1
+		}
+	}
+	if len(decl.Pointers) > 0 {
+		baseSize = 8
+	}
+	for _, suffix := range decl.Suffixes {
+		if arrSuff, ok := suffix.(*parser.ArraySuffix); ok {
+			arrSize := 0
+			if arrSuff.Size != nil {
+				if lit, ok := arrSuff.Size.(*parser.LiteralExpr); ok {
+					if n, err := strconv.Atoi(lit.Token.Literal); err == nil {
+						arrSize = n
+					}
+				}
+			}
+			baseSize = baseSize * arrSize
+		}
+	}
+	return baseSize
+}
+
 func (c *compiler) lookupFields(specs []parser.TypeSpec) []string {
 	if len(specs) == 0 {
 		return nil
@@ -755,13 +782,7 @@ func (c *compiler) expr(e parser.Expression) error {
 			c.emit(Unary, "sizeof", e.Position())
 			return nil
 		}
-		size := 8
-		if len(e.Type) > 0 {
-			ts := typeSpecsString(e.Type)
-			if ts == "char" {
-				size = 1
-			}
-		}
+		size := c.typeSize(e.Type, e.Declarator)
 		c.emit(PushLiteral, strconv.Itoa(size), e.Position())
 		return nil
 	case *parser.CompoundLiteralExpr:
