@@ -44,12 +44,35 @@ type frame struct{ vars map[string]*cell }
 // Interpreter executes instructions and, when constructed with a Program, can
 // call its translated functions. Values are represented as int64, float64,
 // string, or Go aggregate values supplied by callers.
+type callFrameInfo struct {
+	funcName string
+	code     []bytecode.Instruction
+	pc       int
+	local    *frame
+	stack    *[]any
+}
+
 type Interpreter struct {
 	program     *bytecode.Program
 	globals     frame
 	functions   map[string]bytecode.Function
 	host        map[string]Function
 	initialized bool
+	debugger    *Debugger
+	callStack   []*callFrameInfo
+}
+
+// SetDebugger binds a Debugger to the Interpreter.
+func (i *Interpreter) SetDebugger(d *Debugger) {
+	i.debugger = d
+	if d != nil {
+		d.interp = i
+	}
+}
+
+// Debugger returns the attached Debugger, if any.
+func (i *Interpreter) Debugger() *Debugger {
+	return i.debugger
 }
 
 // New creates an interpreter. Supplying a program enables Run and guest calls.
@@ -99,11 +122,28 @@ func (i *Interpreter) Run(name string, args ...any) (any, error) {
 }
 
 func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited *frame) (any, error) {
+	return i.executeFunc("<main>", code, args, inherited)
+}
+
+func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, args []any, inherited *frame) (any, error) {
 	local := &frame{vars: map[string]*cell{}}
 	if inherited != nil {
 		local = inherited
 	}
 	stack := []any{}
+
+	frameInfo := &callFrameInfo{
+		funcName: funcName,
+		code:     code,
+		pc:       0,
+		local:    local,
+		stack:    &stack,
+	}
+	i.callStack = append(i.callStack, frameInfo)
+	defer func() {
+		i.callStack = i.callStack[:len(i.callStack)-1]
+	}()
+
 	pop := func(ins bytecode.Instruction) (any, error) {
 		if len(stack) == 0 {
 			return nil, Error{ins.Position, "stack underflow"}
@@ -113,6 +153,12 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 		return v, nil
 	}
 	for pc := 0; pc < len(code); pc++ {
+		frameInfo.pc = pc
+		if i.debugger != nil {
+			if err := i.debugger.beforeInstruction(i, frameInfo); err != nil {
+				return nil, err
+			}
+		}
 		ins := code[pc]
 		fail := func(s string) (any, error) { return nil, Error{ins.Position, s} }
 		switch ins.Opcode {
@@ -421,7 +467,7 @@ func (i *Interpreter) call(ref functionRef, args []any) (any, error) {
 	for n, v := range args {
 		local.vars[f.Parameters[n]] = &cell{v}
 	}
-	return i.execute(f.Code, args, local)
+	return i.executeFunc(ref.name, f.Code, args, local)
 }
 
 func boolInt(v bool) int64 {

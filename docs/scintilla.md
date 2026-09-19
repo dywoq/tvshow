@@ -161,12 +161,22 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - Maintained variable scopes (`globals` and call stack frames).
   - Interoperability with host Go code via `RegisterFunction(name, fn)`.
   - Binary instruction decoding and execution (`ExecuteBinary`, `DecodeInstruction`).
-- **Key Functions:**
+  - Built-in interactive debugger (`Debugger`) providing breakpoints, stepping modes, execution control, and runtime state inspection.
+- **Key Functions & Types:**
   - `New(program ...*bytecode.Program) *Interpreter`
   - `(i *Interpreter) RegisterFunction(name string, fn Function)`
   - `(i *Interpreter) Run(name string, args ...any) (any, error)`
   - `(i *Interpreter) Execute(code []bytecode.Instruction) (any, error)`
+  - `(i *Interpreter) SetDebugger(d *Debugger)`
   - `InterpretBinary(code [][]byte) (any, error)`
+  - `NewDebugger() *Debugger`
+  - `(d *Debugger) Attach(interp *Interpreter)`
+  - `(d *Debugger) SetHook(fn HookFunc)`
+  - `(d *Debugger) SetBreakpoint(filename string, line int) *Breakpoint`
+  - `(d *Debugger) SetFunctionBreakpoint(funcName string) *Breakpoint`
+  - `(d *Debugger) StepInto()`, `StepOver()`, `StepOut()`, `StepInstruction()`, `Continue()`, `Pause()`, `Stop()`
+  - `(d *Debugger) CallStack() []StackFrame`
+  - `(d *Debugger) GetVariable(name string) (any, bool)`, `SetVariable(name string, value any) bool`
 
 ---
 
@@ -197,6 +207,54 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `return` | none | Returns current stack top value (or `nil` if stack is empty). |
 | `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
 | `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
+
+---
+
+## Interpreter Debugger
+
+The `lang/interpreter` package includes a full-featured Debugger system for inspecting and controlling Scintilla bytecode execution.
+
+### Capabilities
+
+1. **Breakpoints:**
+   - **Line Breakpoints:** Triggered when execution reaches a specific file line (`SetBreakpoint(filename, line)`).
+   - **Function Breakpoints:** Triggered at the entry instruction of a target function (`SetFunctionBreakpoint(funcName)`).
+   - **Breakpoint Management:** Supports clearing specific breakpoints (`ClearBreakpoint(id)`, `ClearBreakpointAt(filename, line)`, `ClearFunctionBreakpoint(funcName)`) or clearing all breakpoints (`ClearAllBreakpoints()`).
+
+2. **Stepping Modes (`DebugAction`):**
+   - `Continue`: Resumes execution until the next breakpoint or pause request.
+   - `StepInto`: Steps to the next line or into a function call.
+   - `StepOver`: Steps to the next line in the current function, executing function calls inline.
+   - `StepOut`: Runs until the current function returns to its caller.
+   - `StepInstruction`: Steps a single bytecode instruction regardless of line boundaries.
+   - `Stop`: Terminates VM execution immediately with `ErrStopped`.
+
+3. **Runtime State Inspection & Modification:**
+   - **Call Stack:** `CallStack()` returns active call frames (`StackFrame`) including function names, source positions, program counters, and local scopes. `CurrentFrame()` returns the innermost frame.
+   - **Variables:** `Locals()` returns current frame variables; `Globals()` returns global variables. `GetVariable(name)` and `SetVariable(name, value)` dynamically read or modify local and global variables during debug hooks.
+   - **Stack & Instructions:** `OperandStack()` returns a copy of the VM value stack; `CurrentInstruction()` returns the opcode currently being executed.
+
+### Usage Example
+
+```go
+interp := interpreter.New(program)
+dbg := interpreter.NewDebugger()
+dbg.Attach(interp)
+
+dbg.SetFunctionBreakpoint("Multiply")
+
+dbg.SetHook(func(d *interpreter.Debugger, event interpreter.DebugEvent) interpreter.DebugAction {
+    fmt.Printf("Hit debug event %s in %s at line %d\n", event.Kind, event.FuncName, event.Position.Line)
+    if val, ok := d.GetVariable("a"); ok {
+        fmt.Printf("Variable a = %v\n", val)
+    }
+    return interpreter.ActionStepOver
+})
+
+result, err := interp.Run("Start")
+```
+
+---
 
 ### Binary Format Specification (`Instruction.MarshalBinary`)
 
