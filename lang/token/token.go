@@ -165,6 +165,7 @@ const (
 	BOOL      // _Bool
 	COMPLEX   // _Complex
 	IMAGINARY // _Imaginary
+	STRING_KW // string
 
 	keywordEnd
 )
@@ -273,6 +274,7 @@ var (
 		BOOL:      "_Bool",
 		COMPLEX:   "_Complex",
 		IMAGINARY: "_Imaginary",
+		STRING_KW: "string",
 	}
 	keywords = map[string]TokenType{
 		"auto":       AUTO,
@@ -309,6 +311,7 @@ var (
 		"_Bool":      BOOL,
 		"_Complex":   COMPLEX,
 		"_Imaginary": IMAGINARY,
+		"string":     STRING_KW,
 	}
 )
 

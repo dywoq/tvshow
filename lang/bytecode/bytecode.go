@@ -667,7 +667,13 @@ func (c *compiler) expr(e parser.Expression) error {
 	case *parser.IdentExpr:
 		c.emit(Load, e.Token.Literal, e.Token.Pos)
 	case *parser.LiteralExpr:
-		c.emit(PushLiteral, e.Token.Literal, e.Token.Pos)
+		if e.Token.Type == token.STRING {
+			c.emit(PushLiteral, strconv.Quote(e.Token.Literal), e.Token.Pos)
+		} else if e.Token.Type == token.CHAR {
+			c.emit(PushLiteral, "'"+e.Token.Literal+"'", e.Token.Pos)
+		} else {
+			c.emit(PushLiteral, e.Token.Literal, e.Token.Pos)
+		}
 	case *parser.UnaryExpr:
 		if e.Operator.Type == token.BIT_AND {
 			return c.address(e.Operand)
@@ -741,6 +747,23 @@ func (c *compiler) expr(e parser.Expression) error {
 		}
 	case *parser.CastExpr:
 		return c.expr(e.Value)
+	case *parser.SizeofExpr:
+		if e.Value != nil {
+			if err := c.expr(e.Value); err != nil {
+				return err
+			}
+			c.emit(Unary, "sizeof", e.Position())
+			return nil
+		}
+		size := 8
+		if len(e.Type) > 0 {
+			ts := typeSpecsString(e.Type)
+			if ts == "char" {
+				size = 1
+			}
+		}
+		c.emit(PushLiteral, strconv.Itoa(size), e.Position())
+		return nil
 	case *parser.CompoundLiteralExpr:
 		return c.compoundLiteral(e)
 	case *parser.InitializerListExpr:

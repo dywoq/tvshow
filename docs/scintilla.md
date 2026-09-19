@@ -263,7 +263,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 
 | C99 Type / Declaration Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
-| Primitive Types (`int`, `float`, `char`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). |
+| Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. |
 | Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing and runtime `map[string]any` field member access (`.` and `->`). |
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
 | Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
@@ -287,6 +287,6 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
 | Function Calls | **Supported** | Argument stack lowering for guest and host function invocations. |
 | Cast Expressions (`(type)expr`) | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not enforce dynamic cast conversions. |
-| `sizeof` Operator | **Parsed Only** | Syntactically parsed in AST; bytecode translator does not yet evaluate expression sizes. |
+| `sizeof` Operator | **Supported** | Evaluates string length for string operands or byte size for type specifiers / expressions. |
 | Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
 | `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |

@@ -127,6 +127,30 @@ func TestRunExecutesArrayCompoundLiteralsAndDesignators(t *testing.T) {
 	}
 }
 
+func TestRunStringOperationsAndSizeof(t *testing.T) {
+	program := programFromSource(t, `
+		string Start() {
+			string s = "hello";
+			s += " ";
+			s = s + "world";
+			s += '!';
+			int len = sizeof(s);
+			if (len != 12) return "fail_len";
+			if (sizeof(string) != 8) return "fail_sizeof_type";
+			if (sizeof("test") != 4) return "fail_sizeof_lit";
+			if (s[0] != 'h') return "fail_index";
+			if ("abc" >= "def") return "fail_cmp";
+			return s;
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "hello world!" {
+		t.Errorf("Run = %#v, want %q", got, "hello world!")
+	}
+}
+
 func TestRunAddressOfCompoundLiteral(t *testing.T) {
 	program := programFromSource(t, `
 		typedef struct Point { int x; int y; } Point;

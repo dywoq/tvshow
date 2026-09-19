@@ -162,7 +162,7 @@ func isStorage(k token.TokenType) bool {
 	return k == token.TYPEDEF || k == token.EXTERN || k == token.STATIC || k == token.AUTO || k == token.INLINE
 }
 func isBuiltin(k token.TokenType) bool {
-	return k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY
+	return k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY || k == token.STRING_KW
 }
 func (p *Parser) parseDeclarator() (Declarator, error) {
 	var d Declarator
@@ -303,9 +303,11 @@ func (p *Parser) parseBlock() (*BlockStmt, error) {
 	b.Close, e = p.expect(token.RBRACE)
 	return b, e
 }
-func (p *Parser) startsDeclaration() bool {
-	t := p.cur()
+func (p *Parser) startsTypeToken(t token.Token) bool {
 	return isQualifier(t.Type) || isStorage(t.Type) || isBuiltin(t.Type) || t.Type == token.STRUCT || t.Type == token.UNION || t.Type == token.ENUM || (t.Type == token.IDENT && p.typedefs[t.Literal])
+}
+func (p *Parser) startsDeclaration() bool {
+	return p.startsTypeToken(p.cur())
 }
 func (p *Parser) parseStmt() (Statement, error) {
 	t := p.cur()
@@ -587,6 +589,28 @@ func (p *Parser) prefix() (Expression, error) {
 		x = &IdentExpr{t}
 	case token.INT, token.FLOAT, token.CHAR, token.STRING:
 		x = &LiteralExpr{t}
+	case token.SIZEOF:
+		if p.cur().Type == token.LPAREN && p.i+1 < len(p.tokens) && p.startsTypeToken(p.tokens[p.i+1]) {
+			p.next()
+			specs, e := p.parseSpecs()
+			if e != nil {
+				return nil, e
+			}
+			decl, e := p.parseDeclarator()
+			if e != nil {
+				return nil, e
+			}
+			if _, e = p.expect(token.RPAREN); e != nil {
+				return nil, e
+			}
+			x = &SizeofExpr{Token: t, Type: specs, Declarator: decl}
+		} else {
+			val, e := p.expr(13)
+			if e != nil {
+				return nil, e
+			}
+			x = &SizeofExpr{Token: t, Value: val}
+		}
 	case token.LPAREN:
 		if p.startsDeclaration() {
 			specs, e := p.parseSpecs()

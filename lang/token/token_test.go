@@ -44,6 +44,7 @@ func TestLookupIdent(t *testing.T) {
 		ident    string
 		expected TokenType
 	}{
+		{"string", STRING_KW},
 		{"int", INT_KW},
 		{"struct", STRUCT},
 		{"void", VOID},
@@ -64,8 +65,8 @@ func TestLookupIdent(t *testing.T) {
 }
 
 func TestTokenClassification(t *testing.T) {
-	if !IsKeyword(INT_KW) {
-		t.Errorf("Expected INT_KW to be a keyword")
+	if !IsKeyword(INT_KW) || !IsKeyword(STRING_KW) {
+		t.Errorf("Expected INT_KW and STRING_KW to be keywords")
 	}
 	if IsKeyword(IDENT) {
 		t.Errorf("Expected IDENT not to be a keyword")
