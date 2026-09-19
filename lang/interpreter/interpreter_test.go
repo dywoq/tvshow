@@ -281,3 +281,66 @@ func TestHostGuestTypeConversions(t *testing.T) {
 		t.Errorf("sum = %#v, want 30", got)
 	}
 }
+
+func TestRunExecutesStructWithArrayDeclarations(t *testing.T) {
+	program := programFromSource(t, `
+		extern string __get_name();
+
+		typedef struct _VECTORSTR {
+			string List[];
+		} VECTORSTR;
+
+		string Start() {
+			VECTORSTR Vector = (VECTORSTR){0};
+			Vector.List[0] = "Hi!";
+			return Vector.List[0];
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "Hi!" {
+		t.Errorf("Run = %#v, want %q", got, "Hi!")
+	}
+}
+
+func TestRunExecutesStructWithUninitializedArrayMember(t *testing.T) {
+	program := programFromSource(t, `
+		typedef struct _VECTORSTR {
+			string List[];
+		} VECTORSTR;
+
+		string Start() {
+			VECTORSTR Vector;
+			Vector.List[0] = "Hello";
+			Vector.List[1] = "World";
+			return Vector.List[0] + " " + Vector.List[1];
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "Hello World" {
+		t.Errorf("Run = %#v, want %q", got, "Hello World")
+	}
+}
+
+func TestRunExecutesStructWithArrayMemberInitialization(t *testing.T) {
+	program := programFromSource(t, `
+		typedef struct VectorInt {
+			int List[3];
+		} VectorInt;
+
+		int Start() {
+			VectorInt v = { .List = {10, 20, 30} };
+			v.List[1] = 42;
+			return v.List[0] + v.List[1] + v.List[2];
+		}`)
+	got, err := New(program).Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != int64(10+42+30) {
+		t.Errorf("Run = %#v, want %d", got, 10+42+30)
+	}
+}
