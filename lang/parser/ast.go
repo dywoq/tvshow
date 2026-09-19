@@ -405,7 +405,18 @@ func (*InitializerListExpr) expression()                {}
 func (n *InitializerListExpr) String() string {
 	values := make([]string, len(n.Values))
 	for i, value := range n.Values {
-		values[i] = nodeString(value.Value)
+		prefix := ""
+		for _, d := range value.Designators {
+			if d.Token.Type == token.DOT {
+				prefix += "." + d.Field.Literal
+			} else if d.Token.Type == token.LBRACK {
+				prefix += "[" + nodeString(d.Index) + "]"
+			}
+		}
+		if prefix != "" {
+			prefix += " = "
+		}
+		values[i] = prefix + nodeString(value.Value)
 	}
 	return "{" + strings.Join(values, ", ") + "}"
 }

@@ -374,7 +374,7 @@ func (a *Analyzer) expression(expression parser.Expression) {
 }
 func assignable(expression parser.Expression) bool {
 	switch expression.(type) {
-	case *parser.IdentExpr, *parser.IndexExpr, *parser.MemberExpr:
+	case *parser.IdentExpr, *parser.IndexExpr, *parser.MemberExpr, *parser.CompoundLiteralExpr:
 		return true
 	case *parser.UnaryExpr:
 		return expression.(*parser.UnaryExpr).Operator.Type == token.ASTERISK
