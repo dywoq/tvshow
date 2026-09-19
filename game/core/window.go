@@ -23,18 +23,15 @@ type ExecutorParams struct {
 // Executor is a function that is executed every frame.
 // It can be used to run guest program code, calculate coordinates and etc.
 // related to game logic.
-type Executor func(params *ExecutorParams) error
+type Executor func() error
 
 type ebitenWindow struct {
 	w *Window
 }
 
 func (e *ebitenWindow) Update() error {
-	params := &ExecutorParams{
-		Window: e.w,
-	}
 	for _, ex := range e.w.Executors {
-		err := ex(params)
+		err := ex()
 		if err != nil {
 			return fmt.Errorf("one of the executors failed: %v", err)
 		}
