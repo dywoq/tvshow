@@ -88,7 +88,14 @@ func New(program ...*bytecode.Program) *Interpreter {
 }
 
 // RegisterFunction makes a Go function available to call instructions.
-func (i *Interpreter) RegisterFunction(name string, fn Function) { i.host[name] = fn }
+// The fn parameter can be a Function (func([]any) (any, error)) or any typed Go function.
+func (i *Interpreter) RegisterFunction(name string, fn any) {
+	wrapped, err := WrapFuncWithInterpreter(i, fn)
+	if err != nil {
+		panic(fmt.Sprintf("interpreter: RegisterFunction %q: %v", name, err))
+	}
+	i.host[name] = wrapped
+}
 
 // Interpret executes an independent instruction sequence.
 func Interpret(code []bytecode.Instruction) (any, error) { return New().Execute(code) }
