@@ -7,5 +7,6 @@ func Root() *cobra.Command {
 		Use:   "scintilla",
 		Short: "Compile your Scintilla code into the bytecode",
 	}
+	r.AddCommand(Build())
 	return r
 }
