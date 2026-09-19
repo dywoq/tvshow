@@ -1,16 +1,14 @@
 package main
 
 import (
-	"tvshow/game/core"
+	"fmt"
+	"os"
+	"tvshow/game"
 )
 
 func main() {
-	w := &core.Window{
-		Width:  640,
-		Height: 480,
-		Title:  "ТВ Шоу 2",
-	}
-	if err := w.Run(); err != nil {
-		panic(err)
+	err := game.Run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start the game: %v\n", err)
 	}
 }
