@@ -9,16 +9,26 @@ import (
 // Window consists of the game window configuration settings.
 // It provides a way to run the game.
 type Window struct {
-	Width     int
-	Height    int
-	Title     string
-	Executors []Executor
+	Width       int
+	Height      int
+	Title       string
+	Executors   []Executor
+	Initializes []Initializer
+	Cleaners    []Cleaner
 }
 
 // Executor is a function that is executed every frame.
 // It can be used to run guest program code, calculate coordinates and etc.
 // related to game logic.
 type Executor func() error
+
+// Initializer is a function that is executed before the game.
+// It is used to initialize game's critical components.
+type Initializer func() error
+
+// Cleaner is a function that is executed after the game.
+// It is used to clean resources of game's critical components.
+type Cleaner func() error
 
 type ebitenWindow struct {
 	w *Window
