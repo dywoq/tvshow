@@ -180,7 +180,8 @@ func (p *Parser) parseDeclarator() (Declarator, error) {
 		if e != nil {
 			return d, e
 		}
-		d = x
+		d.Name = x.Name
+		d.FuncPointers = x.Pointers
 		if _, e = p.expect(token.RPAREN); e != nil {
 			return d, e
 		}

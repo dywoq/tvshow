@@ -264,6 +264,52 @@ func TestRegisterFunctionTypedIntegration(t *testing.T) {
 	}
 }
 
+func TestPassingFunctionsGuestAndHost(t *testing.T) {
+	program := programFromSource(t, `
+		typedef int (*BinOp)(int, int);
+
+		int add(int a, int b) { return a + b; }
+		int mul(int a, int b) { return a * b; }
+
+		int host_add(int a, int b);
+		int apply_host_typed(BinOp op, int a, int b);
+		int apply_host_interp(BinOp op, int a, int b);
+
+		int apply_guest(BinOp op, int a, int b) {
+			return op(a, b);
+		}
+
+		int Start() {
+			int res1 = apply_guest(add, 10, 20);            // guest -> guest
+			int res2 = apply_guest(host_add, 10, 20);       // host -> guest
+			int res3 = apply_host_typed(mul, 6, 7);         // guest -> host (typed)
+			int res4 = apply_host_interp(add, 15, 27);      // guest -> host (interpreter CallFunc)
+			BinOp alias = &mul;
+			int res5 = alias(2, 3);
+			return res1 + res2 + res3 + res4 + res5;
+		}`)
+
+	interp := New(program)
+	interp.RegisterFunction("host_add", func(a, b int) int {
+		return a + b
+	})
+	interp.RegisterFunction("apply_host_typed", func(op func(int, int) int, a, b int) int {
+		return op(a, b)
+	})
+	interp.RegisterFunction("apply_host_interp", func(i *Interpreter, op any, a, b int) (any, error) {
+		return i.CallFunc(op, a, b)
+	})
+
+	got, err := interp.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// 30 + 30 + 42 + 42 + 6 = 150
+	if got != int64(150) {
+		t.Errorf("Run = %#v, want 150", got)
+	}
+}
+
 func TestRegisterFunctionWithInterpreterParamIntegration(t *testing.T) {
 	program := programFromSource(t, `
 		int double_guest(int n) { return n * 2; }

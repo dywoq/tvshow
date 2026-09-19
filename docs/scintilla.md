@@ -10,7 +10,8 @@ Scintilla source files typically use the `.sc` extension. Scintilla code is tran
 ### Key Concepts & Differences from C99
 
 - **Memory Management:** Scintilla omits manual memory management (`malloc`/`free`), direct physical memory addresses, pointer arithmetic, and inline assembly. Pointer dereference (`*`) and address-of (`&`) syntax exist abstractly for variable reference and lvalue modification, but runtime memory is safely managed by the runtime environment.
-- **Runtime & Host Integration:** Guest runtime functionality relies on host-registered Go functions (`Interpreter.RegisterFunction`).
+- **Runtime & Host Integration:** Guest runtime functionality relies on host-registered Go functions (`Interpreter.RegisterFunction`). Guest functions and host functions can pass function references to one another and execute provided functions seamlessly.
+- **Function Pointers & Aliases:** Supports referencing functions (`fn` or `&fn`), function pointer variables, function type aliases using `typedef` (e.g., `typedef int (*BinOp)(int, int);`), and strict type checking of function signatures during compile time (semantic analysis).
 - **Header & Source Files:** Direct header/source compilation model simplified for interpretation.
 - **Public & Modular Architecture:** Lexer, macro preprocessor, parser, semantic analyzer, bytecode translator, and interpreter are exposed as public Go packages designed for embedding, modularity, and reusability.
 
@@ -140,7 +141,7 @@ Validates AST semantics, types, and qualifiers prior to bytecode translation.
   - **Qualifier Checks (`const`):** Enforces immutability for `const` variables, `const` struct fields, fields of `const` struct instances, elements of `const` arrays, and target values of pointers-to-const. Rejects assignments (`=`, `+=`, etc.) and modifications (`++`, `--`) targeting `const` lvalues. Requires initializers for local `const` variables.
   - **Array Checks:** Verifies subscripted expressions are arrays, pointers, or strings and subscript indices are integers. Enforces non-negative array bounds, rejects arrays with `void` element types, and validates initializer list bounds against fixed array sizes.
   - **Struct & Union Field Checks:** Disallows fields of type `void`, checks for duplicate member names within aggregate declarations, verifies member access operators (`.` on structs/unions vs `->` on struct/union pointers), and validates member existence.
-  - **Function Parameters & Call Checks:** Rejects named parameters declared with `void` type, enforces exact argument count and parameter type compatibility for function calls, and verifies called expressions are callable objects.
+  - **Function Parameters & Call Checks:** Rejects named parameters declared with `void` type, enforces exact argument count and parameter type compatibility for function calls, verifies strict function signature compatibility for function aliases and function pointers, and verifies called expressions are callable objects.
   - **Local Variables & Declarations:** Rejects variables declared with `void` type, enforces type compatibility between variable declarations and initializers, and tracks scope/identifier symbol tables.
   - **Return Statements:** Enforces that `void` functions do not return values, non-void functions return a value, and return expression types match function return types.
   - **Expression & Operator Type Checks:** Enforces operand constraints for bitwise operators (integers only), unary operators, binary arithmetic, switch statement quantities, and condition expressions.
@@ -171,6 +172,8 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - `(i *Interpreter) RegisterFunction(name string, fn Function)`
   - `(i *Interpreter) Run(name string, args ...any) (any, error)`
   - `(i *Interpreter) Execute(code []bytecode.Instruction) (any, error)`
+  - `(i *Interpreter) ToFunction(v any) (Function, error)`
+  - `(i *Interpreter) CallFunc(fn any, args ...any) (any, error)`
   - `(i *Interpreter) SetDebugger(d *Debugger)`
   - `InterpretBinary(code [][]byte) (any, error)`
   - `NewDebugger() *Debugger`
@@ -211,6 +214,61 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `return` | none | Returns current stack top value (or `nil` if stack is empty). |
 | `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
 | `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
+
+---
+
+## Function References, Aliases & Interoperability
+
+Scintilla provides full support for referencing functions, function aliases, and bidirectional invocation between guest Scintilla code and host Go code.
+
+### 1. Function References & Aliases in Guest Code
+
+Functions can be referenced by name (`fn`) or address (`&fn`), stored in variables, passed as arguments, or stored in struct fields. Function aliases are declared using standard C `typedef` syntax.
+
+```c
+// Define a function type alias for a function taking two ints and returning an int
+typedef int (*BinaryOp)(int, int);
+
+int Add(int a, int b) { return a + b; }
+int Multiply(int a, int b) { return a * b; }
+
+// Guest function taking a function alias parameter
+int ExecuteOp(BinaryOp op, int x, int y) {
+    return op(x, y); // Direct call or (*op)(x, y)
+}
+
+int Start() {
+    BinaryOp op = Add;
+    int sum = ExecuteOp(op, 10, 20);      // 30
+    int prod = ExecuteOp(&Multiply, 3, 4); // 12
+    return sum + prod;                    // 42
+}
+```
+
+### 2. Strict Type Checking
+
+The semantic analyzer (`lang/semantic`) enforces strict type safety for function calls and assignments:
+- **Signature Matching:** Variable initializations, assignments, and function parameters expecting function pointers require matching return types, argument counts, and argument types.
+- **Callable Verification:** Calling non-function types (e.g. `int x = 5; x()`) is rejected with a compile-time error (`called object of type "int" is not a function`).
+- **Argument & Return Validation:** Calls on function pointers/aliases check parameter count and argument types against the function pointer signature.
+
+### 3. Host and Guest Interoperability
+
+Guest function references can be passed directly to host Go functions, and host function references can be passed to guest code.
+
+- **Passing Guest Functions to Host Go Functions:**
+  When host functions registered via `RegisterFunction` accept a Go function parameter (e.g. `func(op func(int, int) int, a, b int) int` or `interpreter.Function` or `any`), Scintilla automatically wraps guest function references into callable Go functions.
+  Host functions can also use `interp.ToFunction(v)` or `interp.CallFunc(v, args...)` to invoke guest function references directly.
+
+- **Passing Host Functions to Guest Functions:**
+  Host functions registered with `RegisterFunction` can be passed to guest functions expecting function pointers/aliases and invoked seamlessly from guest code.
+
+```go
+// Register host proxy function accepting a guest function parameter
+interp.RegisterFunction("ApplyHost", func(op func(int, int) int, a, b int) int {
+    return op(a, b) // Executes guest function from Go host
+})
+```
 
 ---
 
@@ -328,7 +386,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, semantically validated, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. `void` checked for invalid variable, field, or parameter declarations. |
 | Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing, duplicate member validation, void member rejection, member access operator validation (`.` vs `->`), and runtime `map[string]any` field access. |
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
-| Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes. |
+| Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes, including function pointer and function signature aliases (`typedef int (*BinOp)(int, int)`). |
 | Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking. |
 | Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Storage duration specifiers (`static`, `extern`, `inline`) parsed. Note: `register`, `volatile`, and `restrict` keywords removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
@@ -347,7 +405,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Conditional Operator (`?:`) | **Supported** | Short-circuit ternary evaluation retained via conditional jumps with branch type compatibility checking. |
 | Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement. |
 | Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
-| Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations. |
+| Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer and function alias calls (`fn(a, b)` or `(*fn)(a, b)`). |
 | Cast Expressions (`(type)expr`) | **Supported** | Parsed and type-checked during semantic analysis. |
 | `sizeof` Operator | **Supported** | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions. |
 | Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |

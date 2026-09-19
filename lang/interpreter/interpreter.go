@@ -215,6 +215,10 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 				stack = append(stack, cellAddress(c))
 			} else if c, ok := i.globals.vars[name]; ok {
 				stack = append(stack, cellAddress(c))
+			} else if _, ok := i.functions[name]; ok {
+				stack = append(stack, functionRef{name})
+			} else if _, ok := i.host[name]; ok {
+				stack = append(stack, functionRef{name})
 			} else {
 				return fail("undefined name " + name)
 			}
@@ -223,11 +227,17 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			if e != nil {
 				return nil, e
 			}
-			a, ok := v.(address)
-			if !ok {
+			if a, ok := v.(address); ok {
+				stack = append(stack, a.get())
+			} else if _, ok := v.(functionRef); ok {
+				stack = append(stack, v)
+			} else if _, ok := v.(Function); ok {
+				stack = append(stack, v)
+			} else if _, ok := v.(func([]any) (any, error)); ok {
+				stack = append(stack, v)
+			} else {
 				return fail("load_indirect requires an address")
 			}
-			stack = append(stack, a.get())
 		case bytecode.StoreIndirect:
 			v, e := pop(ins)
 			if e != nil {
@@ -315,6 +325,12 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			case bytecode.Function:
 				v, e = i.call(functionRef{fn.Name}, argv)
 			default:
+				if target != nil && reflect.ValueOf(target).Kind() == reflect.Func {
+					if wf, err := WrapFuncWithInterpreter(i, target); err == nil {
+						v, e = wf(argv)
+						break
+					}
+				}
 				return fail("call requires a function")
 			}
 			if e != nil {
@@ -476,6 +492,45 @@ func (i *Interpreter) call(ref functionRef, args []any) (any, error) {
 		local.vars[f.Parameters[n]] = &cell{v}
 	}
 	return i.executeFunc(ref.name, f.Code, args, local)
+}
+
+// ToFunction converts a function reference, function name, or Function into an executable Function.
+func (i *Interpreter) ToFunction(v any) (Function, error) {
+	if v == nil {
+		return nil, fmt.Errorf("interpreter: cannot convert nil to function")
+	}
+	switch f := v.(type) {
+	case Function:
+		return f, nil
+	case func([]any) (any, error):
+		return Function(f), nil
+	case functionRef:
+		return func(args []any) (any, error) {
+			return i.call(f, args)
+		}, nil
+	case string:
+		return func(args []any) (any, error) {
+			return i.call(functionRef{f}, args)
+		}, nil
+	case bytecode.Function:
+		return func(args []any) (any, error) {
+			return i.call(functionRef{f.Name}, args)
+		}, nil
+	default:
+		if reflect.ValueOf(v).Kind() == reflect.Func {
+			return WrapFuncWithInterpreter(i, v)
+		}
+		return nil, fmt.Errorf("interpreter: %v is not a function", v)
+	}
+}
+
+// CallFunc invokes a function reference, function name, or Function with arguments.
+func (i *Interpreter) CallFunc(fn any, args ...any) (any, error) {
+	f, err := i.ToFunction(fn)
+	if err != nil {
+		return nil, err
+	}
+	return f(args)
 }
 
 func isZero(v any) bool {

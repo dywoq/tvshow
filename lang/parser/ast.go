@@ -54,10 +54,11 @@ type Enumerator struct {
 	Value Expression
 }
 type Declarator struct {
-	Name        token.Token
-	Pointers    []Pointer
-	Suffixes    []DeclaratorSuffix
-	Initializer Expression
+	Name         token.Token
+	Pointers     []Pointer
+	FuncPointers []Pointer
+	Suffixes     []DeclaratorSuffix
+	Initializer  Expression
 }
 type Pointer struct {
 	Token      token.Token
