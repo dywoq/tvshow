@@ -41,6 +41,7 @@ const (
 	Return        Opcode = "return"
 	MakeArray     Opcode = "make_array"
 	MakeStruct    Opcode = "make_struct"
+	Convert       Opcode = "convert"
 )
 
 // Instruction is one bytecode operation. Operand is a string for names and
@@ -165,6 +166,8 @@ func binaryOpcode(opcode Opcode) (byte, bool) {
 		return 20, true
 	case MakeStruct:
 		return 21, true
+	case Convert:
+		return 22, true
 	default:
 		return 0, false
 	}
@@ -392,6 +395,58 @@ func (c *compiler) declaration(d *parser.VarDecl) error {
 		}
 	}
 	return nil
+}
+
+func (c *compiler) targetTypeString(specs []parser.TypeSpec, decl parser.Declarator) string {
+	if len(decl.Pointers) > 0 {
+		return "pointer"
+	}
+	if len(decl.Suffixes) > 0 {
+		return "array"
+	}
+	for _, spec := range specs {
+		switch spec.Token.Type {
+		case token.AUTO:
+			return "auto"
+		case token.VOID:
+			return "void"
+		case token.INT_KW, token.SHORT, token.LONG, token.SIGNED, token.UNSIGNED, token.ENUM:
+			return "int"
+		case token.FLOAT_KW, token.DOUBLE:
+			return "float"
+		case token.CHAR_KW:
+			return "char"
+		case token.STRING_KW:
+			return "string"
+		case token.BOOL:
+			return "bool"
+		case token.STRUCT:
+			return "struct"
+		case token.UNION:
+			return "union"
+		case token.IDENT:
+			if spec.Token.Literal == "string" {
+				return "string"
+			}
+			if spec.Token.Literal == "int" {
+				return "int"
+			}
+			if spec.Token.Literal == "float" || spec.Token.Literal == "double" {
+				return "float"
+			}
+			if spec.Token.Literal == "char" {
+				return "char"
+			}
+			if spec.Token.Literal == "_Bool" || spec.Token.Literal == "bool" {
+				return "bool"
+			}
+			if c.lookupFields([]parser.TypeSpec{spec}) != nil {
+				return "struct"
+			}
+			return spec.Token.Literal
+		}
+	}
+	return "int"
 }
 
 func (c *compiler) typeSize(specs []parser.TypeSpec, decl parser.Declarator) int {
@@ -773,7 +828,12 @@ func (c *compiler) expr(e parser.Expression) error {
 			}
 		}
 	case *parser.CastExpr:
-		return c.expr(e.Value)
+		if err := c.expr(e.Value); err != nil {
+			return err
+		}
+		targetType := c.targetTypeString(e.Type, e.Declarator)
+		c.emit(Convert, targetType, e.Position())
+		return nil
 	case *parser.SizeofExpr:
 		if e.Value != nil {
 			if err := c.expr(e.Value); err != nil {

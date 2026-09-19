@@ -230,7 +230,6 @@ func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
 	case *parser.VarDecl:
 		a.specs(d.Specs)
 		isTypedef := hasSpec(d.Specs, token.TYPEDEF)
-		isExtern := hasSpec(d.Specs, token.EXTERN)
 		baseType := a.typeFromSpecs(d.Specs)
 
 		for _, declarator := range d.Declarators {
@@ -260,7 +259,7 @@ func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
 				if vType.Kind == TypeArray && vType.Base != nil && vType.Base.Kind == TypeVoid {
 					a.problem(declarator.Name.Pos, "array %q element cannot be void", name)
 				}
-				if vType.IsConst && declarator.Initializer == nil && !isExtern && !global {
+				if vType.IsConst && declarator.Initializer == nil && !global {
 					a.problem(declarator.Name.Pos, "uninitialized const variable %q", name)
 				}
 			}
@@ -986,7 +985,12 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 	case *parser.CastExpr:
 		specsType := a.typeFromSpecs(e.Type)
 		castType := a.typeFromDeclarator(specsType, e.Declarator)
-		a.expression(e.Value)
+		vType := a.expression(e.Value)
+		if vType.Kind != TypeUnknown && vType.Kind != TypeAuto && castType.Kind != TypeUnknown && castType.Kind != TypeAuto {
+			if !a.isCompatible(castType, vType) {
+				a.problem(e.Open.Pos, "type conversion error: cannot cast %s to %s", vType.String(), castType.String())
+			}
+		}
 		return castType
 
 	case *parser.SizeofExpr:

@@ -142,19 +142,16 @@ const (
 	DOUBLE
 	ELSE
 	ENUM
-	EXTERN
 	FLOAT_KW
 	FOR
 	GOTO
 	IF
-	INLINE
 	INT_KW
 	LONG
 	RETURN
 	SHORT
 	SIGNED
 	SIZEOF
-	STATIC
 	STRUCT
 	SWITCH
 	TYPEDEF
@@ -251,19 +248,16 @@ var (
 		DOUBLE:    "double",
 		ELSE:      "else",
 		ENUM:      "enum",
-		EXTERN:    "extern",
 		FLOAT_KW:  "float",
 		FOR:       "for",
 		GOTO:      "goto",
 		IF:        "if",
-		INLINE:    "inline",
 		INT_KW:    "int",
 		LONG:      "long",
 		RETURN:    "return",
 		SHORT:     "short",
 		SIGNED:    "signed",
 		SIZEOF:    "sizeof",
-		STATIC:    "static",
 		STRUCT:    "struct",
 		SWITCH:    "switch",
 		TYPEDEF:   "typedef",
@@ -288,19 +282,16 @@ var (
 		"double":     DOUBLE,
 		"else":       ELSE,
 		"enum":       ENUM,
-		"extern":     EXTERN,
 		"float":      FLOAT_KW,
 		"for":        FOR,
 		"goto":       GOTO,
 		"if":         IF,
-		"inline":     INLINE,
 		"int":        INT_KW,
 		"long":       LONG,
 		"return":     RETURN,
 		"short":      SHORT,
 		"signed":     SIGNED,
 		"sizeof":     SIZEOF,
-		"static":     STATIC,
 		"struct":     STRUCT,
 		"switch":     SWITCH,
 		"typedef":    TYPEDEF,

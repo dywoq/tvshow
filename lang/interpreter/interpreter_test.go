@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"strings"
 	"testing"
 
 	"tvshow/lang/bytecode"
@@ -308,7 +309,7 @@ func TestHostGuestTypeConversions(t *testing.T) {
 
 func TestRunExecutesStructWithArrayDeclarations(t *testing.T) {
 	program := programFromSource(t, `
-		extern string __get_name();
+		string __get_name();
 
 		typedef struct _VECTORSTR {
 			string List[];
@@ -369,6 +370,64 @@ func TestRunExecutesAutoType(t *testing.T) {
 	}
 	if got != "hello world" {
 		t.Errorf("Run = %#v, want %q", got, "hello world")
+	}
+}
+
+func TestAutoTypeConversions(t *testing.T) {
+	// Successful conversions
+	validProgram := programFromSource(t, `
+		int Start() {
+			auto a = 42;
+			auto b = 3.14;
+			auto c = "hello";
+			int x = (int)a;
+			int y = (int)b;
+			string s = (string)c;
+			char ch = (char)a;
+			return x + y;
+		}`)
+	got, err := New(validProgram).Run("Start")
+	if err != nil {
+		t.Fatalf("Run valid conversions: %v", err)
+	}
+	if got != int64(45) {
+		t.Errorf("Run = %#v, want 45", got)
+	}
+
+	// Invalid conversion: auto string to int
+	invalidStringToInt := programFromSource(t, `
+		int Start() {
+			auto a = "hello";
+			int x = (int)a;
+			return x;
+		}`)
+	_, err = New(invalidStringToInt).Run("Start")
+	if err == nil || !strings.Contains(err.Error(), "type conversion error") {
+		t.Errorf("expected type conversion error for string -> int, got %v", err)
+	}
+
+	// Invalid conversion: auto int to string
+	invalidIntToString := programFromSource(t, `
+		string Start() {
+			auto a = 123;
+			string s = (string)a;
+			return s;
+		}`)
+	_, err = New(invalidIntToString).Run("Start")
+	if err == nil || !strings.Contains(err.Error(), "type conversion error") {
+		t.Errorf("expected type conversion error for int -> string, got %v", err)
+	}
+
+	// Invalid conversion: auto string to float
+	invalidStringToFloat := programFromSource(t, `
+		float Start() {
+			auto a = "world";
+			float f = (float)a;
+			return f;
+		}`)
+	_, err = New(invalidStringToFloat).Run("Start")
+	if err == nil || !strings.Contains(err.Error(), "type conversion error") {
+		t.Errorf("expected type conversion error for string -> float, got %v", err)
 	}
 }
 

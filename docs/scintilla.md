@@ -214,6 +214,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `return` | none | Returns current stack top value (or `nil` if stack is empty). |
 | `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
 | `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
+| `convert` | `string` (target type) | Pops value, converts value to specified target type (or reports a type conversion error if types do not match), and pushes result onto stack. |
 
 ---
 
@@ -324,7 +325,7 @@ Instructions can be serialized into a portable, architecture-independent binary 
 
 1. **Header (3 bytes):**
    - Byte 0: Format Version (`1`)
-   - Byte 1: Opcode numeric identifier (1-21)
+   - Byte 1: Opcode numeric identifier (1-22)
    - Byte 2: Operand Kind (`0` = None, `1` = String, `2` = Integer)
 2. **Operand Payload (variable):**
    - Kind `0`: 0 bytes.
@@ -354,14 +355,15 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | `#include` | **Supported** | Resolver-backed custom header inclusion via `IncludeResolver`. |
 | Conditionals (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`) | **Supported** | Full conditional compilation evaluation. |
 | `defined` Operator | **Supported** | Evaluated during `#if`/`#elif` expansion (`defined(X)` or `defined X`). |
-| `#line`, `#error`, `#pragma` | *Not Implemented* | Directives are not yet recognized by the macro expander. |
-| Predefined Macros (`__LINE__`, `__FILE__`, etc.) | *Not Implemented* | Standard predefined macros are not automatically injected. |
+| `#error` | **Supported** | Signals a compilation/preprocessor error with an optional message. |
+| `#line`, `#pragma` | **Removed / Not Supported** | Preprocessor directives `#line` and `#pragma` are not supported. |
+| Predefined Macros (`__LINE__`, `__FILE__`, etc.) | **Removed / Not Supported** | Standard predefined macros such as `__LINE__` and `__FILE__` are not supported. |
 
 ### 2. Lexical & Language Syntax Compliance
 
 | C99 Syntax Feature | Scintilla Status | Details & Notes |
 | --- | --- | --- |
-| Keywords | **Supported** | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `extern`, `float`, `for`, `goto`, `if`, `inline`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `static`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Keywords | **Supported** | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
 | Comments | **Supported** | Line comments (`//`) and block comments (`/* ... */`). |
 | Numeric Literals | **Supported** | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`). |
 | Character & String Literals | **Supported** | Escaped sequences handled by lexer/interpreter. |
@@ -388,7 +390,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
 | Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes, including function pointer and function signature aliases (`typedef int (*BinOp)(int, int)`). |
 | Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking. |
-| Specifiers (`const`, `inline`, `auto`, `extern`, `static`) | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Storage duration specifiers (`static`, `extern`, `inline`) parsed. Note: `register`, `volatile`, and `restrict` keywords removed. |
+| Specifiers (`const`, `auto`) | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Type conversions (casts) on `auto` variables convert values to specified target types at runtime, reporting a type conversion error if types do not match. Note: `static`, `extern`, `inline`, `register`, `volatile`, and `restrict` keywords removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
 
 ### 5. Expressions & Operators
@@ -406,7 +408,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement. |
 | Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
 | Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer and function alias calls (`fn(a, b)` or `(*fn)(a, b)`). |
-| Cast Expressions (`(type)expr`) | **Supported** | Parsed and type-checked during semantic analysis. |
+| Cast Expressions (`(type)expr`) | **Supported** | Parsed, type-checked during semantic analysis, and evaluated at runtime. Converts `auto` variables to specified target types, reporting a type conversion error if types do not match. |
 | `sizeof` Operator | **Supported** | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions. |
 | Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
 | `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |

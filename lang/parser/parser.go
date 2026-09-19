@@ -159,7 +159,7 @@ func isQualifier(k token.TokenType) bool {
 	return k == token.CONST
 }
 func isStorage(k token.TokenType) bool {
-	return k == token.TYPEDEF || k == token.EXTERN || k == token.STATIC || k == token.AUTO || k == token.INLINE
+	return k == token.TYPEDEF || k == token.AUTO
 }
 func isBuiltin(k token.TokenType) bool {
 	return k == token.AUTO || k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY || k == token.STRING_KW
@@ -219,9 +219,6 @@ func (p *Parser) parseDeclarator() (Declarator, error) {
 			a := &ArraySuffix{Open: o}
 			for isQualifier(p.cur().Type) {
 				a.Qualifiers = append(a.Qualifiers, p.next())
-			}
-			if _, ok := p.accept(token.STATIC); ok {
-				a.Static = true
 			}
 			if p.cur().Type != token.RBRACK {
 				x, e := p.expr(1)

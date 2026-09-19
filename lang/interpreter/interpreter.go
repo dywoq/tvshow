@@ -469,6 +469,20 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 				return fail("address_member requires an aggregate address")
 			}
 			stack = append(stack, address{get: func() any { return members[member] }, set: func(v any) { members[member] = v }})
+		case bytecode.Convert:
+			targetType, ok := ins.Operand.(string)
+			if !ok {
+				return fail("convert requires a target type operand")
+			}
+			v, e := pop(ins)
+			if e != nil {
+				return nil, e
+			}
+			res, e := convertValueType(v, targetType)
+			if e != nil {
+				return fail(e.Error())
+			}
+			stack = append(stack, res)
 		default:
 			return fail("unknown opcode " + string(ins.Opcode))
 		}
@@ -913,9 +927,135 @@ func DecodeInstructions(data [][]byte) ([]bytecode.Instruction, error) {
 	return out, nil
 }
 func decodeOpcode(n byte) (bytecode.Opcode, bool) {
-	ops := []bytecode.Opcode{"", bytecode.Declare, bytecode.PushLiteral, bytecode.Load, bytecode.Address, bytecode.AddressIndex, bytecode.AddressMember, bytecode.LoadIndirect, bytecode.StoreIndirect, bytecode.Unary, bytecode.ToBool, bytecode.Binary, bytecode.Dup, bytecode.Rotate, bytecode.Pop, bytecode.Call, bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue, bytecode.Return, bytecode.MakeArray, bytecode.MakeStruct}
+	ops := []bytecode.Opcode{"", bytecode.Declare, bytecode.PushLiteral, bytecode.Load, bytecode.Address, bytecode.AddressIndex, bytecode.AddressMember, bytecode.LoadIndirect, bytecode.StoreIndirect, bytecode.Unary, bytecode.ToBool, bytecode.Binary, bytecode.Dup, bytecode.Rotate, bytecode.Pop, bytecode.Call, bytecode.Jump, bytecode.JumpIfFalse, bytecode.JumpIfTrue, bytecode.Return, bytecode.MakeArray, bytecode.MakeStruct, bytecode.Convert}
 	if int(n) >= len(ops) || n == 0 {
 		return "", false
 	}
 	return ops[n], true
+}
+
+func valueTypeName(v any) string {
+	if v == nil {
+		return "nil"
+	}
+	switch x := v.(type) {
+	case string:
+		return "string"
+	case float64, float32:
+		return "float"
+	case int64, int, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+		return "int"
+	case bool:
+		return "bool"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "struct"
+	case functionRef, Function, func([]any) (any, error):
+		return "function"
+	case address:
+		return valueTypeName(x.get())
+	default:
+		return fmt.Sprintf("%T", v)
+	}
+}
+
+func convertValueType(v any, targetType string) (any, error) {
+	if ad, ok := v.(address); ok {
+		v = ad.get()
+	}
+	if targetType == "auto" {
+		return v, nil
+	}
+	if v == nil {
+		if targetType == "void" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert nil to %s", targetType)
+	}
+
+	srcType := valueTypeName(v)
+
+	switch targetType {
+	case "int", "short", "long", "signed", "unsigned":
+		if srcType == "int" {
+			return integer(v)
+		}
+		if f, ok := asFloat(v); ok && srcType == "float" {
+			return int64(f), nil
+		}
+		if b, ok := v.(bool); ok {
+			return boolInt(b), nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to int", srcType)
+
+	case "float", "double":
+		if f, ok := asFloat(v); ok {
+			if srcType == "float" || srcType == "int" {
+				return f, nil
+			}
+		}
+		if b, ok := v.(bool); ok {
+			return float64(boolInt(b)), nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to float", srcType)
+
+	case "char":
+		if srcType == "int" {
+			n, _ := integer(v)
+			return n, nil
+		}
+		if f, ok := asFloat(v); ok && srcType == "float" {
+			return int64(f), nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to char", srcType)
+
+	case "string":
+		if s, ok := v.(string); ok {
+			return s, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to string", srcType)
+
+	case "bool", "_Bool":
+		if srcType == "int" || srcType == "float" || srcType == "bool" {
+			return boolInt(truth(v)), nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to bool", srcType)
+
+	case "array":
+		if srcType == "array" {
+			return v, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to array", srcType)
+
+	case "struct", "union":
+		if srcType == "struct" {
+			return v, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to %s", srcType, targetType)
+
+	case "pointer":
+		if srcType == "int" {
+			n, _ := integer(v)
+			if n == 0 {
+				return nil, nil
+			}
+		}
+		if _, ok := v.(address); ok {
+			return v, nil
+		}
+		if srcType == "array" || srcType == "struct" || srcType == "function" {
+			return v, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to pointer", srcType)
+
+	case "void":
+		return nil, nil
+
+	default:
+		if srcType == targetType || srcType == "int" || srcType == "struct" {
+			return v, nil
+		}
+		return nil, fmt.Errorf("type conversion error: cannot convert %s to %s", srcType, targetType)
+	}
 }
