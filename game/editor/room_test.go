@@ -167,3 +167,32 @@ func TestRenderTilesetLayerMissingFile(t *testing.T) {
 		t.Errorf("Expected error for non-existent tileset path, got nil")
 	}
 }
+
+func TestObjectWidthAndHeight(t *testing.T) {
+	jsonStr := `{
+		"width": 100,
+		"height": 100,
+		"object_layers": [
+			{
+				"objects": [
+					{
+						"type": "box",
+						"width": 32,
+						"height": 32,
+						"coordinates": {"x": 5, "y": 5}
+					}
+				]
+			}
+		]
+	}`
+
+	room, err := LoadRoomFromBytes([]byte(jsonStr))
+	if err != nil {
+		t.Fatalf("LoadRoomFromBytes failed: %v", err)
+	}
+
+	obj := room.ObjectLayers[0].Objects[0]
+	if obj.Width != 32 || obj.Height != 32 {
+		t.Errorf("Expected object width and height 32x32, got %dx%d", obj.Width, obj.Height)
+	}
+}
