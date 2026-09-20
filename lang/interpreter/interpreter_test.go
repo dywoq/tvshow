@@ -656,6 +656,110 @@ func TestNewFromBinaryRejectsCorruptedData(t *testing.T) {
 	}
 }
 
+func TestRunDeferFeature(t *testing.T) {
+	// Prompt example
+	promptExampleSource := `
+		void calculate() {
+			int result = 2 + 2;
+		}
+
+		void start() {
+			defer calculate();
+		}`
+	prog1 := programFromSource(t, promptExampleSource)
+	_, err := New(prog1).Run("start")
+	if err != nil {
+		t.Fatalf("Run prompt example: %v", err)
+	}
+
+	// LIFO order and argument evaluation at defer time
+	lifoSource := `
+		string log = "";
+		void append_log(string s) { log += s; }
+		void start() {
+			int a = 1;
+			defer append_log(stringify(a));
+			a = 2;
+			defer append_log(stringify(a));
+		}
+		string get_log() { return log; }`
+	prog2 := programFromSource(t, lifoSource)
+	vm2 := New(prog2)
+	_, err = vm2.Run("start")
+	if err != nil {
+		t.Fatalf("Run LIFO defer: %v", err)
+	}
+	got2, err := vm2.Run("get_log")
+	if err != nil || got2 != "21" {
+		t.Errorf("LIFO defer log = %v, want %q", got2, "21")
+	}
+
+	// Defer on normal return with return value
+	returnValSource := `
+		int side_effect = 0;
+		void set_effect(int v) { side_effect = v; }
+		int start() {
+			defer set_effect(100);
+			return 42;
+		}
+		int get_effect() { return side_effect; }`
+	prog3 := programFromSource(t, returnValSource)
+	vm3 := New(prog3)
+	got3, err := vm3.Run("start")
+	if err != nil {
+		t.Fatalf("Run return val defer: %v", err)
+	}
+	if got3 != int64(42) {
+		t.Errorf("start() = %v, want 42", got3)
+	}
+	effect3, err := vm3.Run("get_effect")
+	if err != nil || effect3 != int64(100) {
+		t.Errorf("side_effect = %v, want 100", effect3)
+	}
+
+	// Defer on thrown exception
+	exceptionSource := `
+		int cleaned_up = 0;
+		void do_cleanup() { cleaned_up = 1; }
+		void start() {
+			defer do_cleanup();
+			throw "something went wrong";
+		}
+		int get_cleaned_up() { return cleaned_up; }`
+	prog4 := programFromSource(t, exceptionSource)
+	vm4 := New(prog4)
+	_, err = vm4.Run("start")
+	if err == nil || !strings.Contains(err.Error(), "something went wrong") {
+		t.Fatalf("expected exception error, got %v", err)
+	}
+	cleaned4, err := vm4.Run("get_cleaned_up")
+	if err != nil || cleaned4 != int64(1) {
+		t.Errorf("cleaned_up = %v, want 1", cleaned4)
+	}
+
+	// Defer with function pointer variable
+	funcPtrSource := `
+		typedef void (*VoidFn)();
+		int log = 0;
+		void inc() { log += 1; }
+		int start() {
+			VoidFn fn = inc;
+			defer fn();
+			return log;
+		}
+		int get_log() { return log; }`
+	prog5 := programFromSource(t, funcPtrSource)
+	vm5 := New(prog5)
+	_, err = vm5.Run("start")
+	if err != nil {
+		t.Fatalf("Run func ptr defer: %v", err)
+	}
+	log5, err := vm5.Run("get_log")
+	if err != nil || log5 != int64(1) {
+		t.Errorf("log = %v, want 1", log5)
+	}
+}
+
 func TestRunStringify(t *testing.T) {
 	source := `
 		typedef struct Point {

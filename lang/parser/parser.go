@@ -435,6 +435,21 @@ func (p *Parser) parseStmt() (Statement, error) {
 			return nil, e
 		}
 		return &ThrowStmt{Token: t, Value: val, Semi: semi}, nil
+	case token.DEFER:
+		p.next()
+		x, e := p.expr(1)
+		if e != nil {
+			return nil, e
+		}
+		call, ok := x.(*CallExpr)
+		if !ok {
+			return nil, p.err("expected function call after defer")
+		}
+		semi, e := p.expect(token.SEMICOLON)
+		if e != nil {
+			return nil, e
+		}
+		return &DeferStmt{Token: t, Call: call, Semi: semi}, nil
 	case token.TRY:
 		p.next()
 		body, e := p.parseBlock()

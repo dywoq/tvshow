@@ -46,6 +46,7 @@ const (
 	PushCatch     Opcode = "push_catch"
 	PopCatch      Opcode = "pop_catch"
 	Swap          Opcode = "swap"
+	Defer         Opcode = "defer"
 )
 
 // Instruction is one bytecode operation. Operand is a string for names and
@@ -176,7 +177,7 @@ func decodeOpcode(n byte) (Opcode, bool) {
 		"", Declare, PushLiteral, Load, Address, AddressIndex, AddressMember,
 		LoadIndirect, StoreIndirect, Unary, ToBool, Binary, Dup, Rotate, Pop,
 		Call, Jump, JumpIfFalse, JumpIfTrue, Return, MakeArray, MakeStruct, Convert,
-		Throw, PushCatch, PopCatch, Swap,
+		Throw, PushCatch, PopCatch, Swap, Defer,
 	}
 	if int(n) >= len(ops) || n == 0 {
 		return "", false
@@ -276,6 +277,8 @@ func binaryOpcode(opcode Opcode) (byte, bool) {
 		return 25, true
 	case Swap:
 		return 26, true
+	case Defer:
+		return 27, true
 	default:
 		return 0, false
 	}
@@ -944,6 +947,18 @@ func (c *compiler) statement(s parser.Statement) error {
 			return err
 		}
 		c.emit(Throw, nil, s.Token.Pos)
+	case *parser.DeferStmt:
+		if s.Call != nil {
+			if err := c.expr(s.Call.Function); err != nil {
+				return err
+			}
+			for _, arg := range s.Call.Arguments {
+				if err := c.expr(arg); err != nil {
+					return err
+				}
+			}
+			c.emit(Defer, len(s.Call.Arguments), s.Token.Pos)
+		}
 	case *parser.TryCatchStmt:
 		catchLabel, endLabel := c.name("try.catch"), c.name("try.end")
 		c.jump(PushCatch, catchLabel, s.Token.Pos)

@@ -138,7 +138,7 @@ Constructs an AST from preprocessed tokens.
 
 - **AST Node Types (`Node`, `Expression`, `Statement`, `Declaration`):**
   - Declarations: `VarDecl`, `FunctionDecl`, `StaticAssertDecl`, `TypeSpec` (`struct`, `union`, `enum`, `typedef`).
-  - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`, `ThrowStmt`, `TryCatchStmt`.
+  - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`, `ThrowStmt`, `TryCatchStmt`, `DeferStmt`.
   - Expressions: `IdentExpr`, `LiteralExpr`, `UnaryExpr`, `BinaryExpr`, `AssignExpr`, `ConditionalExpr` (`?:`), `CallExpr`, `IndexExpr` (`[]`), `MemberExpr` (`.` and `->`), `CastExpr`, `SizeofExpr`, `StringifyExpr`, `CommaExpr`, `CompoundLiteralExpr`, `InitializerListExpr`.
 - **Key Functions:**
   - `Parse(tokens []token.Token) (*Program, error)`
@@ -187,6 +187,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - Maintained variable scopes (`globals` and call stack frames).
   - Interoperability with host Go code via `RegisterFunction(name, fn)`.
   - Native exception system supporting guest `try ... catch` blocks and host-level uncaught exception handlers (`SetExceptionHandler`).
+  - Built-in defer mechanism executing specified functions upon function exit (return, completion, or exception) in LIFO order.
   - Binary instruction decoding and execution (`ExecuteBinary`, `DecodeInstruction`).
   - Built-in interactive debugger (`Debugger`) providing breakpoints, stepping modes, execution control, and runtime state inspection.
 - **Key Functions & Types:**
@@ -245,6 +246,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `push_catch`     | `int` (instruction index) | Registers a catch handler target for the current execution frame.                                                                               |
 | `pop_catch`      | none                      | Removes the top catch handler from the current execution frame.                                                                                 |
 | `swap`           | none                      | Swaps top two values on the operand stack.                                                                                                      |
+| `defer`          | `int` (arg count)         | Pops argument values and target function, registering deferred function call on current execution frame.                                        |
 
 ---
 
@@ -300,6 +302,33 @@ Guest function references can be passed directly to host Go functions, and host 
 interp.RegisterFunction("ApplyHost", func(op func(int, int) int, a, b int) int {
     return op(a, b) // Executes guest function from Go host
 })
+```
+
+---
+
+## Defer Statement (`defer`)
+
+Scintilla provides native builtin support for the `defer` statement.
+
+### 1. Rules & Syntax
+
+- **Function Call Requirement:** A `defer` statement must be followed by a function call expression (e.g. `defer calculate();` or `defer print(msg);`). Passing non-function-call statements or variable declarations (such as `defer int result = 2 + 2;`) produces a compile-time parsing error.
+- **Execution Lifecycle:** Deferred calls are executed when the enclosing function returns, completes, or exits due to a thrown exception.
+- **LIFO Execution Order:** If multiple `defer` statements execute in a function, their calls are deferred onto a stack and executed in Last-In, First-Out (LIFO) order when the function exits.
+- **Argument Evaluation:** Arguments passed to a deferred call are evaluated at the time the `defer` statement is reached during execution.
+
+### 2. Example Program
+
+```c
+void calculate() {
+	int result = 2 + 2;
+}
+
+void start() {
+	defer calculate();
+	// This shall cause parsing error, because this is not a function call:
+	// defer int result = 2 + 2;
+}
 ```
 
 ---
@@ -412,7 +441,7 @@ Bytecode structures can be serialized into portable, architecture-independent bi
 
 1. **Header (3 bytes):**
    - Byte 0: Instruction Format Version (`1`)
-   - Byte 1: Opcode numeric identifier (1-22)
+   - Byte 1: Opcode numeric identifier (1-27)
    - Byte 2: Operand Kind (`0` = None, `1` = String, `2` = Integer)
 2. **Operand Payload (variable):**
    - Kind `0`: 0 bytes.
@@ -464,7 +493,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 
 | C99 Syntax Feature          | Scintilla Status  | Details & Notes                                                                                                                                                                                                                                                                                                                                                                                                        |
 | --------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keywords                    | **Supported**     | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `stringify`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Keywords                    | **Supported**     | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `defer`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `stringify`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
 | Comments                    | **Supported**     | Line comments (`//`) and block comments (`/* ... */`).                                                                                                                                                                                                                                                                                                                                                                 |
 | Numeric Literals            | **Supported**     | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`).                                                                                                                                                                                                                                                                                                      |
 | Character & String Literals | **Supported**     | Escaped sequences handled by lexer/interpreter.                                                                                                                                                                                                                                                                                                                                                                        |
@@ -480,6 +509,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | `for` Loops                                     | **Supported**    | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`).                                                                                                  |
 | Jump Statements (`break`, `continue`, `return`) | **Supported**    | Validated during semantic pass for enclosing loop/switch scopes, void vs non-void returns, and return expression type compatibility.                                                  |
 | Exception Statements (`throw`, `try`-`catch`)   | **Supported**    | Native bytecode-level exception handling. Semantic analyzer verifies string exception types for throw expressions and catch parameters. Host code can register `SetExceptionHandler`. |
+| Defer Statement (`defer`)                       | **Supported**    | Builtin feature executing deferred function calls upon function exit or exception in LIFO order. |
 | `goto` & Labeled Statements                     | **Supported**    | Resolved to instruction jump targets in function context.                                                                                                                             |
 | `return`                                        | **Supported**    | Enforces void vs non-void function return value rules and type compatibility.                                                                                                         |
 

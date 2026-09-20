@@ -389,6 +389,24 @@ void Start() {
 	}
 }
 
+func TestAnalyzeDefer(t *testing.T) {
+	source := `void calculate() { int result = 2 + 2; }
+void start() {
+	defer calculate();
+}`
+	if err := analyzeSource(t, source); err != nil {
+		t.Fatalf("unexpected error analyzing valid defer statement: %v", err)
+	}
+
+	invalidCallSource := `void start() {
+	defer missing_fn();
+}`
+	err := analyzeSource(t, invalidCallSource)
+	if err == nil || !strings.Contains(err.Error(), `undefined identifier "missing_fn"`) {
+		t.Fatalf("expected error for undefined deferred function call, got %v", err)
+	}
+}
+
 func TestAnalyzeExceptions(t *testing.T) {
 	tests := []struct {
 		name    string

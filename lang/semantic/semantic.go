@@ -726,6 +726,10 @@ func (a *Analyzer) statement(statement parser.Statement) {
 		} else {
 			a.problem(s.Token.Pos, "throw statement requires an expression")
 		}
+	case *parser.DeferStmt:
+		if s.Call != nil {
+			a.expression(s.Call)
+		}
 	case *parser.TryCatchStmt:
 		a.statement(s.Body)
 		if s.Catch != nil {
