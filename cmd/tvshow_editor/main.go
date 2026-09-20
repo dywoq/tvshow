@@ -75,6 +75,7 @@ type EditorApp struct {
 	paletteContainer       *fyne.Container
 	paletteButtons         map[string]*widget.Button
 	selectedPaletteTileIdx string
+	tilesetCache           map[string]image.Image
 
 	// Tool controls
 	activeTool EditorTool
@@ -591,6 +592,129 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 	return container.NewBorder(topSection, nil, nil, nil, tilesCard)
 }
 
+func (e *EditorApp) getCachedTilesetImage(layerTilesetPath string) (image.Image, error) {
+	if layerTilesetPath == "" {
+		return nil, fmt.Errorf("tileset_path is empty")
+	}
+	tsPath := layerTilesetPath
+	if !filepath.IsAbs(tsPath) && e.baseDir != "" {
+		tsPath = filepath.Join(e.baseDir, tsPath)
+	}
+
+	if e.tilesetCache == nil {
+		e.tilesetCache = make(map[string]image.Image)
+	}
+
+	if img, ok := e.tilesetCache[tsPath]; ok {
+		return img, nil
+	}
+
+	f, err := os.Open(tsPath)
+	if err != nil {
+		return nil, fmt.Errorf("tileset asset not found at path %q: %w", layerTilesetPath, err)
+	}
+	defer f.Close()
+
+	tsImg, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode tileset image %q: %w", layerTilesetPath, err)
+	}
+
+	e.tilesetCache[tsPath] = tsImg
+	return tsImg, nil
+}
+
+func renderTilesetLayerCached(layer *editor.TilesetLayer, roomWidth, roomHeight int, tsImg image.Image) image.Image {
+	tileW := layer.TileWidth
+	tileH := layer.TileHeight
+	if tileW <= 0 || tileH <= 0 {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
+	}
+
+	bounds := tsImg.Bounds()
+	tsWidth := bounds.Dx()
+	tsHeight := bounds.Dy()
+	cols := tsWidth / tileW
+	if cols <= 0 {
+		cols = 1
+	}
+
+	dstWidth := roomWidth
+	dstHeight := roomHeight
+	if dstWidth <= 0 {
+		dstWidth = 1
+	}
+	if dstHeight <= 0 {
+		dstHeight = 1
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, dstWidth, dstHeight))
+
+	colsInRoom := roomWidth / tileW
+	if colsInRoom <= 0 {
+		colsInRoom = 1
+	}
+
+	for i, tile := range layer.Tiles {
+		tileIdx, err := strconv.Atoi(tile.Index)
+		if err != nil {
+			continue
+		}
+
+		srcX := (tileIdx % cols) * tileW
+		srcY := (tileIdx / cols) * tileH
+
+		if srcX < 0 || srcY < 0 || srcX+tileW > tsWidth || srcY+tileH > tsHeight {
+			continue
+		}
+
+		var dstX, dstY int
+		if tile.Coordinates != nil {
+			dstX = tile.Coordinates.X
+			dstY = tile.Coordinates.Y
+		} else {
+			col := i % colsInRoom
+			row := i / colsInRoom
+			dstX = col * tileW
+			dstY = row * tileH
+		}
+
+		srcRect := image.Rect(srcX, srcY, srcX+tileW, srcY+tileH)
+		dstRect := image.Rect(dstX, dstY, dstX+tileW, dstY+tileH)
+
+		draw.Draw(dst, dstRect, tsImg, srcRect.Min, draw.Over)
+	}
+
+	return dst
+}
+
+func (e *EditorApp) renderRoomCompositeFast() (image.Image, error) {
+	width := e.room.Width
+	height := e.room.Height
+	if width <= 0 {
+		width = 1
+	}
+	if height <= 0 {
+		height = 1
+	}
+
+	composite := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	for _, layer := range e.room.TilesetLayers {
+		if layer.TilesetPath == "" {
+			continue
+		}
+		tsImg, err := e.getCachedTilesetImage(layer.TilesetPath)
+		if err != nil {
+			return nil, err
+		}
+		layerImg := renderTilesetLayerCached(&layer, width, height, tsImg)
+		draw.Draw(composite, composite.Bounds(), layerImg, image.Point{}, draw.Over)
+	}
+
+	return composite, nil
+}
+
 func (e *EditorApp) rebuildPalette() {
 	e.paletteButtons = make(map[string]*widget.Button)
 	if e.tsLayerSelect == nil || e.paletteContainer == nil {
@@ -610,22 +734,9 @@ func (e *EditorApp) rebuildPalette() {
 		return
 	}
 
-	tsPath := layer.TilesetPath
-	if !filepath.IsAbs(tsPath) && e.baseDir != "" {
-		tsPath = filepath.Join(e.baseDir, tsPath)
-	}
-
-	f, err := os.Open(tsPath)
+	tsImg, err := e.getCachedTilesetImage(layer.TilesetPath)
 	if err != nil {
-		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel(fmt.Sprintf("Tileset asset not found: %v", err))}
-		e.paletteContainer.Refresh()
-		return
-	}
-	defer f.Close()
-
-	tsImg, _, err := image.Decode(f)
-	if err != nil {
-		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel(fmt.Sprintf("Failed to decode tileset image: %v", err))}
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel(fmt.Sprintf("Failed to load tileset image: %v", err))}
 		e.paletteContainer.Refresh()
 		return
 	}
@@ -1113,8 +1224,6 @@ func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size
 				}
 			}
 
-			e.refreshObjectList()
-			e.refreshTileList()
 			e.refreshPreview()
 		}
 	} else if e.isSelecting {
@@ -1130,7 +1239,6 @@ func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size
 			obj := &e.room.ObjectLayers[e.draggedObjLayerIdx].Objects[e.draggedObjIdx]
 			obj.Coordinates = editor.Coordinates{X: roomX, Y: roomY}
 			e.statusLabel.SetText(fmt.Sprintf("Moving object %q to (%d, %d)", obj.Type, roomX, roomY))
-			e.refreshObjectList()
 			e.refreshPreview()
 		}
 	} else if e.activeTool == ToolBrush {
@@ -1213,9 +1321,11 @@ func (e *EditorApp) handlePreviewSecondaryTap(pos fyne.Position, containerSize f
 func (e *EditorApp) handlePreviewDragEnd() {
 	if e.isMovingSelection {
 		e.snapSelectedTilesToGrid()
-		e.refreshTileList()
-		e.refreshPreview()
 	}
+	e.refreshObjectList()
+	e.refreshTileList()
+	e.refreshPreview()
+
 	e.isDragging = false
 	e.isSelecting = false
 	e.isMovingSelection = false
@@ -1317,9 +1427,8 @@ func (e *EditorApp) placeTileAtRoomCoordsInternal(roomX, roomY int, recordHistor
 }
 
 func (e *EditorApp) refreshPreview() {
-	img, err := editor.RenderRoomComposite(e.room, e.baseDir)
+	img, err := e.renderRoomCompositeFast()
 	if err != nil {
-		// Report tileset error explicitly
 		errMsg := fmt.Sprintf("Render Error: %v", err)
 		e.statusLabel.SetText("Error rendering room preview")
 		errCard := widget.NewCard("Render Failure / Missing Asset", "", widget.NewLabel(errMsg))
@@ -1360,22 +1469,18 @@ func (e *EditorApp) refreshPreview() {
 		minY := min(e.selectionStart.Y, e.selectionEnd.Y)
 		maxY := max(e.selectionStart.Y, e.selectionEnd.Y)
 
-		for x := minX; x <= maxX; x++ {
-			for y := minY; y <= maxY; y++ {
-				if x >= 0 && x < bounds.Dx() && y >= 0 && y < bounds.Dy() {
-					if x == minX || x == maxX || y == minY || y == maxY {
-						rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 255})
-					} else {
-						orig := rgbaImg.RGBAAt(x, y)
-						blended := color.RGBA{
-							R: uint8((int(orig.R)*185 + 255*70) / 255),
-							G: uint8((int(orig.G)*185 + 255*70) / 255),
-							B: uint8((int(orig.B)*185 + 255*70) / 255),
-							A: 255,
-						}
-						rgbaImg.Set(x, y, blended)
-					}
-				}
+		selRect := image.Rect(minX, minY, maxX+1, maxY+1).Intersect(bounds)
+		if !selRect.Empty() {
+			overlayColor := image.NewUniform(color.RGBA{255, 255, 255, 60})
+			draw.Draw(rgbaImg, selRect, overlayColor, image.Point{}, draw.Over)
+
+			for x := selRect.Min.X; x < selRect.Max.X; x++ {
+				rgbaImg.Set(x, selRect.Min.Y, color.White)
+				rgbaImg.Set(x, selRect.Max.Y-1, color.White)
+			}
+			for y := selRect.Min.Y; y < selRect.Max.Y; y++ {
+				rgbaImg.Set(selRect.Min.X, y, color.White)
+				rgbaImg.Set(selRect.Max.X-1, y, color.White)
 			}
 		}
 	}
