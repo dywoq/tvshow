@@ -46,3 +46,14 @@ func SetCurrentRoom(name string) error {
 	currentRoom = name
 	return nil
 }
+
+// GetCurrentRoom returns the current room data.
+// Returns an error if it does not exist.
+func GetCurrentRoom() (*Room, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := rooms[currentRoom]; ok {
+		return nil, fmt.Errorf("room %q does not exist", currentRoom)
+	}
+	return rooms[currentRoom], nil
+}
