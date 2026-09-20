@@ -18,7 +18,7 @@ func TestDrawObjectLetter(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	clr := color.RGBA{R: 255, G: 0, B: 0, A: 255}
 
-	drawObjectLetter(img, "E", 10, 10, clr)
+	drawObjectLetter(img, "E", 10, 10, 20, 20, clr)
 
 	c := img.At(12, 12).(color.RGBA)
 	if c.A == 0 {
@@ -133,8 +133,9 @@ func TestTilePaletteToolsAndUndoRedo(t *testing.T) {
 	}
 
 	tile := app.room.TilesetLayers[0].Tiles[0]
-	if tile.Coordinates.X != 52 || tile.Coordinates.Y != 52 {
-		t.Errorf("expected selected tile moved to (52, 52), got (%d, %d)", tile.Coordinates.X, tile.Coordinates.Y)
+	// Tile is snapped to 16x16 grid: (32+20=52) -> (52/16)*16 = 48
+	if tile.Coordinates.X != 48 || tile.Coordinates.Y != 48 {
+		t.Errorf("expected selected tile moved and snapped to (48, 48), got (%d, %d)", tile.Coordinates.X, tile.Coordinates.Y)
 	}
 
 	// Delete selected items using deleteSelectedItems
@@ -155,4 +156,7 @@ func TestTilePaletteToolsAndUndoRedo(t *testing.T) {
 	if len(app.room.TilesetLayers[0].Tiles) < 2 {
 		t.Errorf("expected at least 2 tiles placed via brush drag, got %d", len(app.room.TilesetLayers[0].Tiles))
 	}
+
+	// 6. Test Secondary Tap (right click menu)
+	app.handlePreviewSecondaryTap(fyne.NewPos(50, 50), containerSize)
 }

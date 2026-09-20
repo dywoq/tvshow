@@ -23,6 +23,8 @@ type Coordinates struct {
 type Object struct {
 	Type        string      `json:"type"`
 	Attributes  []string    `json:"attributes"`
+	Width       int         `json:"width"`
+	Height      int         `json:"height"`
 	Coordinates Coordinates `json:"coordinates"`
 }
 

@@ -332,8 +332,8 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			idx := e.objLayerSelect.SelectedIndex()
 			if idx >= 0 && idx < len(e.room.ObjectLayers) {
 				obj := e.room.ObjectLayers[idx].Objects[id]
-				item.(*widget.Label).SetText(fmt.Sprintf("[%d] Type: %s | Pos: (%d, %d) | Attrs: %v",
-					id, obj.Type, obj.Coordinates.X, obj.Coordinates.Y, obj.Attributes))
+				item.(*widget.Label).SetText(fmt.Sprintf("[%d] Type: %s | Size: %dx%d | Pos: (%d, %d) | Attrs: %v",
+					id, obj.Type, obj.Width, obj.Height, obj.Coordinates.X, obj.Coordinates.Y, obj.Attributes))
 			}
 		},
 	)
@@ -349,6 +349,10 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 		}
 
 		typeEntry := widget.NewEntry()
+		wEntry := widget.NewEntry()
+		wEntry.SetText("16")
+		hEntry := widget.NewEntry()
+		hEntry.SetText("16")
 		attrsEntry := widget.NewEntry()
 		xEntry := widget.NewEntry()
 		xEntry.SetText("0")
@@ -357,6 +361,8 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 
 		form := widget.NewForm(
 			widget.NewFormItem("Type", typeEntry),
+			widget.NewFormItem("Width", wEntry),
+			widget.NewFormItem("Height", hEntry),
 			widget.NewFormItem("Attributes (comma-separated)", attrsEntry),
 			widget.NewFormItem("X", xEntry),
 			widget.NewFormItem("Y", yEntry),
@@ -368,6 +374,8 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			}
 			x, _ := strconv.Atoi(xEntry.Text)
 			y, _ := strconv.Atoi(yEntry.Text)
+			w, _ := strconv.Atoi(wEntry.Text)
+			h, _ := strconv.Atoi(hEntry.Text)
 			var attrs []string
 			if attrsEntry.Text != "" {
 				for _, a := range strings.Split(attrsEntry.Text, ",") {
@@ -377,6 +385,8 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 
 			newObj := editor.Object{
 				Type:        typeEntry.Text,
+				Width:       w,
+				Height:      h,
 				Attributes:  attrs,
 				Coordinates: editor.Coordinates{X: x, Y: y},
 			}
@@ -771,8 +781,14 @@ func (e *EditorApp) refreshTileList() {
 	}
 }
 
-func drawObjectLetter(img *image.RGBA, letter string, x, y int, clr color.RGBA) {
-	bgBox := image.Rect(x, y, x+10, y+14)
+func drawObjectLetter(img *image.RGBA, letter string, x, y, w, h int, clr color.RGBA) {
+	if w <= 0 {
+		w = 12
+	}
+	if h <= 0 {
+		h = 14
+	}
+	bgBox := image.Rect(x, y, x+w, y+h)
 	draw.Draw(img, bgBox, &image.Uniform{color.RGBA{0, 0, 0, 200}}, image.Point{}, draw.Over)
 
 	d := &font.Drawer{
@@ -786,23 +802,32 @@ func drawObjectLetter(img *image.RGBA, letter string, x, y int, clr color.RGBA) 
 
 type previewOverlay struct {
 	widget.BaseWidget
-	onTap    func(pos fyne.Position, size fyne.Size)
-	onDrag   func(pos fyne.Position, size fyne.Size)
-	onDragEnd func()
+	onTap          func(pos fyne.Position, size fyne.Size)
+	onSecondaryTap func(pos fyne.Position, size fyne.Size)
+	onDrag         func(pos fyne.Position, size fyne.Size)
+	onDragEnd      func()
 }
 
 func newPreviewOverlay(
 	onTap func(pos fyne.Position, size fyne.Size),
+	onSecondaryTap func(pos fyne.Position, size fyne.Size),
 	onDrag func(pos fyne.Position, size fyne.Size),
 	onDragEnd func(),
 ) *previewOverlay {
 	po := &previewOverlay{
-		onTap:     onTap,
-		onDrag:    onDrag,
-		onDragEnd: onDragEnd,
+		onTap:          onTap,
+		onSecondaryTap: onSecondaryTap,
+		onDrag:         onDrag,
+		onDragEnd:      onDragEnd,
 	}
 	po.ExtendBaseWidget(po)
 	return po
+}
+
+func (po *previewOverlay) SecondaryTapped(e *fyne.PointEvent) {
+	if po.onSecondaryTap != nil {
+		po.onSecondaryTap(e.Position, po.Size())
+	}
 }
 
 func (po *previewOverlay) CreateRenderer() fyne.WidgetRenderer {
@@ -867,8 +892,16 @@ func (e *EditorApp) convertPosToRoomCoords(pos fyne.Position, containerSize fyne
 func (e *EditorApp) findObjectAt(roomX, roomY int) (layerIdx int, objIdx int, found bool) {
 	for lIdx, layer := range e.room.ObjectLayers {
 		for oIdx, obj := range layer.Objects {
-			if roomX >= obj.Coordinates.X-8 && roomX <= obj.Coordinates.X+16 &&
-				roomY >= obj.Coordinates.Y-8 && roomY <= obj.Coordinates.Y+20 {
+			w := obj.Width
+			h := obj.Height
+			if w <= 0 {
+				w = 16
+			}
+			if h <= 0 {
+				h = 16
+			}
+			if roomX >= obj.Coordinates.X-4 && roomX <= obj.Coordinates.X+w+4 &&
+				roomY >= obj.Coordinates.Y-4 && roomY <= obj.Coordinates.Y+h+4 {
 				return lIdx, oIdx, true
 			}
 		}
@@ -1123,7 +1156,66 @@ func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size
 	}
 }
 
+func (e *EditorApp) snapSelectedTilesToGrid() {
+	for _, ref := range e.selectedTiles {
+		if ref.LayerIdx >= 0 && ref.LayerIdx < len(e.room.TilesetLayers) {
+			layer := &e.room.TilesetLayers[ref.LayerIdx]
+			tileW := layer.TileWidth
+			tileH := layer.TileHeight
+			if tileW <= 0 || tileH <= 0 {
+				tileW, tileH = 16, 16
+			}
+			if ref.TileIdx >= 0 && ref.TileIdx < len(layer.Tiles) {
+				t := &layer.Tiles[ref.TileIdx]
+				if t.Coordinates != nil {
+					t.Coordinates.X = (t.Coordinates.X / tileW) * tileW
+					t.Coordinates.Y = (t.Coordinates.Y / tileH) * tileH
+				}
+			}
+		}
+	}
+}
+
+func (e *EditorApp) handlePreviewSecondaryTap(pos fyne.Position, containerSize fyne.Size) {
+	menuItems := []*fyne.MenuItem{
+		fyne.NewMenuItem("Delete Selected Items", func() {
+			e.deleteSelectedItems()
+		}),
+		fyne.NewMenuItem("Move / Select Tool", func() {
+			if e.toolSelect != nil {
+				e.toolSelect.SetSelected("Selection Tool")
+			}
+		}),
+		fyne.NewMenuItem("Brush Tool", func() {
+			if e.toolSelect != nil {
+				e.toolSelect.SetSelected("Brush Tool")
+			}
+		}),
+		fyne.NewMenuItem("Export Room", func() {
+			e.exportRoom()
+		}),
+		fyne.NewMenuItem("Save Room", func() {
+			e.saveRoom()
+		}),
+		fyne.NewMenuItem("Undo", func() {
+			e.undo()
+		}),
+		fyne.NewMenuItem("Redo", func() {
+			e.redo()
+		}),
+	}
+
+	menu := fyne.NewMenu("Actions", menuItems...)
+	popUp := widget.NewPopUpMenu(menu, e.window.Canvas())
+	popUp.ShowAtPosition(pos)
+}
+
 func (e *EditorApp) handlePreviewDragEnd() {
+	if e.isMovingSelection {
+		e.snapSelectedTilesToGrid()
+		e.refreshTileList()
+		e.refreshPreview()
+	}
 	e.isDragging = false
 	e.isSelecting = false
 	e.isMovingSelection = false
@@ -1305,7 +1397,7 @@ func (e *EditorApp) refreshPreview() {
 				A: 255,
 			}
 
-			drawObjectLetter(rgbaImg, letter, obj.Coordinates.X, obj.Coordinates.Y, clr)
+			drawObjectLetter(rgbaImg, letter, obj.Coordinates.X, obj.Coordinates.Y, obj.Width, obj.Height, clr)
 		}
 	}
 
@@ -1319,6 +1411,9 @@ func (e *EditorApp) refreshPreview() {
 	overlay := newPreviewOverlay(
 		func(pos fyne.Position, size fyne.Size) {
 			e.handlePreviewTap(pos, size)
+		},
+		func(pos fyne.Position, size fyne.Size) {
+			e.handlePreviewSecondaryTap(pos, size)
 		},
 		func(pos fyne.Position, size fyne.Size) {
 			e.handlePreviewDrag(pos, size)
