@@ -3,6 +3,7 @@ package program
 import (
 	"fmt"
 	"os"
+	"tvshow/game/room"
 )
 
 // ProvideFunctionality registers and exposes a set of built-in APIs needed by the game program
@@ -19,5 +20,11 @@ func ProvideFunctionality() {
 	// Change state
 	interpret.RegisterFunction("__terminate", func() {
 		state = StateTerminated
+	})
+
+	// Room functionality
+	interpret.RegisterFunction("__room_add", func(name string, filepath string) bool {
+		err := room.Add(name, filepath)
+		return err == nil
 	})
 }

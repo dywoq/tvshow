@@ -161,9 +161,48 @@ func (i *Interpreter) Debugger() *Debugger {
 	return i.debugger
 }
 
+func isBuiltinFunction(name string) bool {
+	return name == "line" || name == "column" || name == "filename"
+}
+
+func (i *Interpreter) currentPosition() token.Position {
+	if len(i.callStack) > 0 {
+		top := i.callStack[len(i.callStack)-1]
+		if top.pc >= 0 && top.pc < len(top.code) {
+			return top.code[top.pc].Position
+		}
+	}
+	return token.Position{}
+}
+
+func (i *Interpreter) registerBuiltins() {
+	if i.host == nil {
+		i.host = make(map[string]Function)
+	}
+	i.host["line"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "line expects 0 arguments"}
+		}
+		return int64(i.currentPosition().Line), nil
+	}
+	i.host["column"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "column expects 0 arguments"}
+		}
+		return int64(i.currentPosition().Column), nil
+	}
+	i.host["filename"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "filename expects 0 arguments"}
+		}
+		return i.currentPosition().Filename, nil
+	}
+}
+
 // New creates an interpreter. Supplying a program enables Run and guest calls.
 func New(program ...*bytecode.Program) *Interpreter {
 	i := &Interpreter{globals: frame{vars: map[string]*cell{}}, functions: map[string]bytecode.Function{}, host: map[string]Function{}}
+	i.registerBuiltins()
 	if len(program) > 0 && program[0] != nil {
 		i.program = program[0]
 		for _, f := range program[0].Functions {
@@ -194,6 +233,9 @@ func InterpretProgramBinary(programData []byte, funcName string, args ...any) (a
 // RegisterFunction makes a Go function available to call instructions.
 // The fn parameter can be a Function (func([]any) (any, error)) or any typed Go function.
 func (i *Interpreter) RegisterFunction(name string, fn any) {
+	if isBuiltinFunction(name) {
+		panic(fmt.Sprintf("interpreter: cannot override built-in function %q", name))
+	}
 	wrapped, err := WrapFuncWithInterpreter(i, fn)
 	if err != nil {
 		panic(fmt.Sprintf("interpreter: RegisterFunction %q: %v", name, err))

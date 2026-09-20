@@ -186,6 +186,7 @@ Stack-based virtual machine executing Scintilla bytecode programs.
   - Executes bytecode instructions (`Execute`, `Run`).
   - Maintained variable scopes (`globals` and call stack frames).
   - Interoperability with host Go code via `RegisterFunction(name, fn)`.
+  - Built-in position functions (`line()`, `column()`, `filename()`) returning current source code position.
   - Native exception system supporting guest `try ... catch` blocks and host-level uncaught exception handlers (`SetExceptionHandler`).
   - Built-in defer mechanism executing specified functions upon function exit (return, completion, or exception) in LIFO order.
   - Binary instruction decoding and execution (`ExecuteBinary`, `DecodeInstruction`).
@@ -384,6 +385,33 @@ result, err := interp.Run("Start")
 - `Position`: The source location (`token.Position`) where `throw` occurred.
 - `FuncName`: The function name where `throw` occurred.
 - `CallStack`: The slice of active stack frames (`[]StackFrame`) captured at throw time.
+
+---
+
+## Built-in Source Position Functions (`line()`, `column()`, `filename()`)
+
+Scintilla provides three built-in functions in guest code to retrieve the current source code position at runtime. These functions are built-in by the interpreter and cannot be overridden or removed externally. They are primarily used for printing debugging messages or logging in guest programs.
+
+### Functions
+
+- `int line()`: Returns the 1-based source code line number of the current call site.
+- `int column()`: Returns the 1-based source code column number of the current call site.
+- `string filename()`: Returns the filename string of the current source file.
+
+### Example Usage
+
+```c
+void LogMessage(string message) {
+    printf("%s:%d:%d: %s\n", filename(), line(), column(), message);
+}
+
+int Start() {
+    int currentLine = line();
+    int currentColumn = column();
+    string currentFile = filename();
+    return currentLine;
+}
+```
 
 ---
 
