@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/color"
+	"image/draw"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +19,10 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 
 	"tvshow/game/editor"
 )
@@ -39,17 +46,23 @@ type EditorApp struct {
 	selectedObjIdx widget.ListItemID
 
 	// Tileset Layer controls
-	tsLayerSelect   *widget.Select
-	tsPathEntry     *widget.Entry
-	tsAttrEntry     *widget.Entry
-	tileWEntry      *widget.Entry
-	tileHEntry      *widget.Entry
-	tileList        *widget.List
-	selectedTileIdx widget.ListItemID
+	tsLayerSelect          *widget.Select
+	tsPathEntry            *widget.Entry
+	tsAttrEntry            *widget.Entry
+	tileWEntry             *widget.Entry
+	tileHEntry             *widget.Entry
+	tileList               *widget.List
+	selectedTileIdx        widget.ListItemID
+	paletteContainer       *fyne.Container
+	paletteButtons         map[string]*widget.Button
+	selectedPaletteTileIdx string
 }
 
 func newEditorApp() *EditorApp {
-	a := app.New()
+	return newEditorAppWithApp(app.New())
+}
+
+func newEditorAppWithApp(a fyne.App) *EditorApp {
 	w := a.NewWindow("Room Editor - TV Show")
 	w.Resize(fyne.NewSize(1024, 700))
 
@@ -280,6 +293,7 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 }
 
 func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
+	e.paletteContainer = container.NewStack()
 	e.tsLayerSelect = widget.NewSelect([]string{}, func(selected string) {
 		e.selectedTileIdx = -1
 		e.loadSelectedTilesetLayerInfo()
@@ -333,6 +347,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 		e.room.TilesetLayers[idx].TileHeight = th
 		e.room.TilesetLayers[idx].Attributes = attrs
 
+		e.rebuildPalette()
 		e.refreshPreview()
 	})
 
@@ -344,6 +359,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 	)
 
 	tsPropertiesCard := widget.NewCard("Tileset Layer Settings", "", container.NewVBox(tsForm, applyTsBtn))
+	paletteCard := widget.NewCard("Tile Set Palette", "Click a tile to select it for placing on room grid", e.paletteContainer)
 
 	e.tileList = widget.NewList(
 		func() int {
@@ -427,8 +443,123 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 	tileControls := container.NewHBox(addTileBtn, deleteTileBtn)
 	tilesCard := widget.NewCard("Tiles", "", container.NewBorder(nil, tileControls, nil, nil, e.tileList))
 
-	topSection := container.NewVBox(layerHeader, tsPropertiesCard)
+	topSection := container.NewVBox(layerHeader, tsPropertiesCard, paletteCard)
 	return container.NewBorder(topSection, nil, nil, nil, tilesCard)
+}
+
+func (e *EditorApp) rebuildPalette() {
+	e.paletteButtons = make(map[string]*widget.Button)
+	if e.tsLayerSelect == nil || e.paletteContainer == nil {
+		return
+	}
+	idx := e.tsLayerSelect.SelectedIndex()
+	if idx < 0 || idx >= len(e.room.TilesetLayers) {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel("No tileset layer selected.")}
+		e.paletteContainer.Refresh()
+		return
+	}
+
+	layer := e.room.TilesetLayers[idx]
+	if layer.TilesetPath == "" {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel("No tileset_path specified for current layer.")}
+		e.paletteContainer.Refresh()
+		return
+	}
+
+	tsPath := layer.TilesetPath
+	if !filepath.IsAbs(tsPath) && e.baseDir != "" {
+		tsPath = filepath.Join(e.baseDir, tsPath)
+	}
+
+	f, err := os.Open(tsPath)
+	if err != nil {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel(fmt.Sprintf("Tileset asset not found: %v", err))}
+		e.paletteContainer.Refresh()
+		return
+	}
+	defer f.Close()
+
+	tsImg, _, err := image.Decode(f)
+	if err != nil {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel(fmt.Sprintf("Failed to decode tileset image: %v", err))}
+		e.paletteContainer.Refresh()
+		return
+	}
+
+	tileW := layer.TileWidth
+	tileH := layer.TileHeight
+	if tileW <= 0 || tileH <= 0 {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel("Invalid tile width or height.")}
+		e.paletteContainer.Refresh()
+		return
+	}
+
+	tsBounds := tsImg.Bounds()
+	cols := tsBounds.Dx() / tileW
+	rows := tsBounds.Dy() / tileH
+	total := cols * rows
+
+	if cols <= 0 || total <= 0 {
+		e.paletteContainer.Objects = []fyne.CanvasObject{widget.NewLabel("Tileset asset dimensions smaller than tile size.")}
+		e.paletteContainer.Refresh()
+		return
+	}
+
+	var items []fyne.CanvasObject
+	for i := 0; i < total; i++ {
+		srcX := (i % cols) * tileW
+		srcY := (i / cols) * tileH
+
+		subImg := image.NewRGBA(image.Rect(0, 0, tileW, tileH))
+		draw.Draw(subImg, subImg.Bounds(), tsImg, image.Pt(srcX, srcY), draw.Src)
+
+		cImg := canvas.NewImageFromImage(subImg)
+		cImg.SetMinSize(fyne.NewSize(32, 32))
+		cImg.FillMode = canvas.ImageFillContain
+
+		tileIdxStr := strconv.Itoa(i)
+		btn := widget.NewButton(fmt.Sprintf("#%s", tileIdxStr), nil)
+		btn.OnTapped = func() {
+			e.selectedPaletteTileIdx = tileIdxStr
+			e.statusLabel.SetText(fmt.Sprintf("Selected palette tile #%s", tileIdxStr))
+			e.updatePaletteHighlight()
+		}
+
+		e.paletteButtons[tileIdxStr] = btn
+
+		item := container.NewVBox(cImg, btn)
+		items = append(items, item)
+	}
+
+	if e.selectedPaletteTileIdx == "" {
+		e.selectedPaletteTileIdx = "0"
+	}
+
+	gridCols := cols
+	if gridCols > 8 {
+		gridCols = 8
+	}
+	if gridCols <= 0 {
+		gridCols = 1
+	}
+	grid := container.NewGridWithColumns(gridCols, items...)
+	scroll := container.NewScroll(grid)
+	scroll.SetMinSize(fyne.NewSize(0, 150))
+
+	e.paletteContainer.Objects = []fyne.CanvasObject{scroll}
+	e.paletteContainer.Refresh()
+	e.updatePaletteHighlight()
+}
+
+func (e *EditorApp) updatePaletteHighlight() {
+	for idxStr, btn := range e.paletteButtons {
+		if idxStr == e.selectedPaletteTileIdx {
+			btn.Importance = widget.HighImportance
+		} else {
+			btn.Importance = widget.MediumImportance
+		}
+		btn.Refresh()
+	}
 }
 
 func (e *EditorApp) refreshUI() {
@@ -489,6 +620,7 @@ func (e *EditorApp) loadSelectedTilesetLayerInfo() {
 		e.tsAttrEntry.SetText("")
 		e.tileWEntry.SetText("16")
 		e.tileHEntry.SetText("16")
+		e.rebuildPalette()
 		return
 	}
 	layer := e.room.TilesetLayers[idx]
@@ -496,12 +628,131 @@ func (e *EditorApp) loadSelectedTilesetLayerInfo() {
 	e.tsAttrEntry.SetText(strings.Join(layer.Attributes, ", "))
 	e.tileWEntry.SetText(strconv.Itoa(layer.TileWidth))
 	e.tileHEntry.SetText(strconv.Itoa(layer.TileHeight))
+	e.rebuildPalette()
 }
 
 func (e *EditorApp) refreshTileList() {
 	if e.tileList != nil {
 		e.tileList.Refresh()
 	}
+}
+
+func drawObjectLetter(img *image.RGBA, letter string, x, y int, clr color.RGBA) {
+	bgBox := image.Rect(x, y, x+10, y+14)
+	draw.Draw(img, bgBox, &image.Uniform{color.RGBA{0, 0, 0, 200}}, image.Point{}, draw.Over)
+
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(clr),
+		Face: basicfont.Face7x13,
+		Dot:  fixed.Point26_6{X: fixed.I(x + 2), Y: fixed.I(y + 11)},
+	}
+	d.DrawString(letter)
+}
+
+type previewOverlay struct {
+	widget.BaseWidget
+	onTap func(pos fyne.Position, size fyne.Size)
+}
+
+func newPreviewOverlay(onTap func(pos fyne.Position, size fyne.Size)) *previewOverlay {
+	po := &previewOverlay{onTap: onTap}
+	po.ExtendBaseWidget(po)
+	return po
+}
+
+func (po *previewOverlay) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(canvas.NewRectangle(color.Transparent))
+}
+
+func (po *previewOverlay) Tapped(e *fyne.PointEvent) {
+	if po.onTap != nil {
+		po.onTap(e.Position, po.Size())
+	}
+}
+
+func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size) {
+	roomW := e.room.Width
+	roomH := e.room.Height
+	if roomW <= 0 || roomH <= 0 || containerSize.Width <= 0 || containerSize.Height <= 0 {
+		return
+	}
+
+	roomAspect := float64(roomW) / float64(roomH)
+	containerAspect := float64(containerSize.Width) / float64(containerSize.Height)
+
+	var renderW, renderH float64
+	var offsetX, offsetY float64
+
+	if containerAspect > roomAspect {
+		renderH = float64(containerSize.Height)
+		renderW = renderH * roomAspect
+		offsetX = (float64(containerSize.Width) - renderW) / 2
+		offsetY = 0
+	} else {
+		renderW = float64(containerSize.Width)
+		renderH = renderW / roomAspect
+		offsetX = 0
+		offsetY = (float64(containerSize.Height) - renderH) / 2
+	}
+
+	relX := float64(pos.X) - offsetX
+	relY := float64(pos.Y) - offsetY
+
+	if relX < 0 || relX >= renderW || relY < 0 || relY >= renderH {
+		return
+	}
+
+	roomX := int(relX * (float64(roomW) / renderW))
+	roomY := int(relY * (float64(roomH) / renderH))
+
+	e.placeTileAtRoomCoords(roomX, roomY)
+}
+
+func (e *EditorApp) placeTileAtRoomCoords(roomX, roomY int) {
+	if e.tsLayerSelect == nil {
+		return
+	}
+	layerIdx := e.tsLayerSelect.SelectedIndex()
+	if layerIdx < 0 || layerIdx >= len(e.room.TilesetLayers) {
+		e.statusLabel.SetText("Select a tileset layer first to place tiles")
+		return
+	}
+
+	layer := &e.room.TilesetLayers[layerIdx]
+	tileW := layer.TileWidth
+	tileH := layer.TileHeight
+	if tileW <= 0 || tileH <= 0 {
+		tileW = 16
+		tileH = 16
+	}
+
+	gridX := (roomX / tileW) * tileW
+	gridY := (roomY / tileH) * tileH
+
+	tileIdxStr := e.selectedPaletteTileIdx
+	if tileIdxStr == "" {
+		tileIdxStr = "0"
+	}
+
+	found := false
+	for i := range layer.Tiles {
+		if layer.Tiles[i].Coordinates != nil && layer.Tiles[i].Coordinates.X == gridX && layer.Tiles[i].Coordinates.Y == gridY {
+			layer.Tiles[i].Index = tileIdxStr
+			found = true
+			break
+		}
+	}
+	if !found {
+		layer.Tiles = append(layer.Tiles, editor.Tile{
+			Index:       tileIdxStr,
+			Coordinates: &editor.Coordinates{X: gridX, Y: gridY},
+		})
+	}
+
+	e.statusLabel.SetText(fmt.Sprintf("Placed tile #%s at (%d, %d)", tileIdxStr, gridX, gridY))
+	e.refreshTileList()
+	e.refreshPreview()
 }
 
 func (e *EditorApp) refreshPreview() {
@@ -516,16 +767,67 @@ func (e *EditorApp) refreshPreview() {
 		return
 	}
 
+	bounds := img.Bounds()
+	rgbaImg := image.NewRGBA(bounds)
+	draw.Draw(rgbaImg, bounds, img, bounds.Min, draw.Src)
+
+	// Draw faint grid lines for the active tileset layer grid resolution
+	if e.tsLayerSelect != nil {
+		if idx := e.tsLayerSelect.SelectedIndex(); idx >= 0 && idx < len(e.room.TilesetLayers) {
+			tsLayer := e.room.TilesetLayers[idx]
+			tw, th := tsLayer.TileWidth, tsLayer.TileHeight
+			if tw > 0 && th > 0 {
+				gridColor := color.RGBA{128, 128, 128, 60}
+				for x := tw; x < bounds.Dx(); x += tw {
+					for y := 0; y < bounds.Dy(); y++ {
+						rgbaImg.Set(x, y, gridColor)
+					}
+				}
+				for y := th; y < bounds.Dy(); y += th {
+					for x := 0; x < bounds.Dx(); x++ {
+						rgbaImg.Set(x, y, gridColor)
+					}
+				}
+			}
+		}
+	}
+
+	// Draw objects on room preview: shown as the first letter of their type with a random color every time
+	for _, layer := range e.room.ObjectLayers {
+		for _, obj := range layer.Objects {
+			if len(obj.Type) == 0 {
+				continue
+			}
+			runes := []rune(obj.Type)
+			letter := string(runes[0])
+
+			// Generate random letter color every time
+			clr := color.RGBA{
+				R: uint8(rand.Intn(256)),
+				G: uint8(rand.Intn(256)),
+				B: uint8(rand.Intn(256)),
+				A: 255,
+			}
+
+			drawObjectLetter(rgbaImg, letter, obj.Coordinates.X, obj.Coordinates.Y, clr)
+		}
+	}
+
 	e.statusLabel.SetText("Preview updated")
-	canvasImg := canvas.NewImageFromImage(img)
+	canvasImg := canvas.NewImageFromImage(rgbaImg)
 	canvasImg.FillMode = canvas.ImageFillContain
 
 	// Background rectangle
 	bg := canvas.NewRectangle(color.RGBA{R: 30, G: 30, B: 30, A: 255})
 
+	overlay := newPreviewOverlay(func(pos fyne.Position, size fyne.Size) {
+		e.handlePreviewTap(pos, size)
+	})
+
 	e.previewContainer.Objects = []fyne.CanvasObject{
 		bg,
 		canvasImg,
+		overlay,
 	}
 	e.previewContainer.Refresh()
 }
