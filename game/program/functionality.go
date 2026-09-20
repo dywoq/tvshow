@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"tvshow/game/keyboard"
 	"tvshow/game/room"
 )
 
@@ -43,6 +44,30 @@ func ProvideFunctionality() {
 			}
 		}
 		return false
+	})
+	interpret.RegisterFunction("__room_get_object_x", func(ttype string) int {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				return obj.Data.Coordinates.X
+			}
+		}
+		return -1
+	})
+	interpret.RegisterFunction("__room_get_object_y", func(ttype string) int {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				return obj.Data.Coordinates.Y
+			}
+		}
+		return -1
 	})
 	interpret.RegisterFunction("__room_set_object_subsprite_index", func(ttype string, subspriteIndex int) bool {
 		room, err := room.GetCurrentRoom()
@@ -101,5 +126,16 @@ func ProvideFunctionality() {
 			}
 		}
 		return false
+	})
+
+	// Keyboard functionality
+	interpret.RegisterFunction("__key_pressed", func(key string) bool {
+		return keyboard.Pressed(key)
+	})
+	interpret.RegisterFunction("__key_just_pressed", func(key string) bool {
+		return keyboard.JustPressed(key)
+	})
+	interpret.RegisterFunction("__key_just_released", func(key string) bool {
+		return keyboard.JustReleased(key)
 	})
 }
