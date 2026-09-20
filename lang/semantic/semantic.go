@@ -156,9 +156,45 @@ type Analyzer struct {
 	switches int
 }
 
+func isBuiltinFunction(name string) bool {
+	return name == "line" || name == "column" || name == "filename"
+}
+
 // New returns an initialized analyzer.
 func New() *Analyzer {
-	return &Analyzer{values: newScope(nil), types: newScope(nil)}
+	a := &Analyzer{values: newScope(nil), types: newScope(nil)}
+	a.registerBuiltins()
+	return a
+}
+
+func (a *Analyzer) registerBuiltins() {
+	intType := Type{Kind: TypeInt}
+	stringType := Type{Kind: TypeString}
+
+	a.values.entries["line"] = symbol{
+		kind: functionSymbol,
+		typ: Type{
+			Kind:       TypeFunction,
+			ReturnType: &intType,
+			Params:     []Type{},
+		},
+	}
+	a.values.entries["column"] = symbol{
+		kind: functionSymbol,
+		typ: Type{
+			Kind:       TypeFunction,
+			ReturnType: &intType,
+			Params:     []Type{},
+		},
+	}
+	a.values.entries["filename"] = symbol{
+		kind: functionSymbol,
+		typ: Type{
+			Kind:       TypeFunction,
+			ReturnType: &stringType,
+			Params:     []Type{},
+		},
+	}
 }
 
 // Analyze checks program and returns all errors found, if any.
@@ -205,7 +241,7 @@ func (a *Analyzer) predeclareFunctions(program *parser.Program) {
 			name := function.Declarator.Name.Literal
 			retBase := a.typeFromSpecs(function.Specs)
 			funcType := a.typeFromDeclarator(retBase, function.Declarator)
-			if old, exists := a.values.entries[name]; exists && old.kind != functionSymbol {
+			if old, exists := a.values.entries[name]; exists && (old.kind != functionSymbol || isBuiltinFunction(name)) {
 				a.problem(function.Declarator.Name.Pos, "redefinition of %q", name)
 			} else {
 				a.values.entries[name] = symbol{kind: functionSymbol, typ: funcType}
@@ -245,7 +281,7 @@ func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
 					kind = functionSymbol
 				}
 
-				if old, exists := destination.entries[name]; exists && !(kind == functionSymbol && old.kind == functionSymbol) {
+				if old, exists := destination.entries[name]; exists && !(kind == functionSymbol && old.kind == functionSymbol && !isBuiltinFunction(name)) {
 					a.problem(declarator.Name.Pos, "redefinition of %q", name)
 				} else {
 					destination.entries[name] = symbol{kind: kind, typ: vType}
@@ -725,6 +761,10 @@ func (a *Analyzer) statement(statement parser.Statement) {
 			}
 		} else {
 			a.problem(s.Token.Pos, "throw statement requires an expression")
+		}
+	case *parser.DeferStmt:
+		if s.Call != nil {
+			a.expression(s.Call)
 		}
 	case *parser.TryCatchStmt:
 		a.statement(s.Body)

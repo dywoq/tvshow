@@ -72,6 +72,11 @@ type catchHandler struct {
 	stackDepth int
 }
 
+type deferredCall struct {
+	target any
+	args   []any
+}
+
 // Interpreter executes instructions and, when constructed with a Program, can
 // call its translated functions. Values are represented as int64, float64,
 // string, or Go aggregate values supplied by callers.
@@ -82,6 +87,7 @@ type callFrameInfo struct {
 	local    *frame
 	stack    *[]any
 	handlers []catchHandler
+	defers   []deferredCall
 }
 
 type Interpreter struct {
@@ -155,9 +161,48 @@ func (i *Interpreter) Debugger() *Debugger {
 	return i.debugger
 }
 
+func isBuiltinFunction(name string) bool {
+	return name == "line" || name == "column" || name == "filename"
+}
+
+func (i *Interpreter) currentPosition() token.Position {
+	if len(i.callStack) > 0 {
+		top := i.callStack[len(i.callStack)-1]
+		if top.pc >= 0 && top.pc < len(top.code) {
+			return top.code[top.pc].Position
+		}
+	}
+	return token.Position{}
+}
+
+func (i *Interpreter) registerBuiltins() {
+	if i.host == nil {
+		i.host = make(map[string]Function)
+	}
+	i.host["line"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "line expects 0 arguments"}
+		}
+		return int64(i.currentPosition().Line), nil
+	}
+	i.host["column"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "column expects 0 arguments"}
+		}
+		return int64(i.currentPosition().Column), nil
+	}
+	i.host["filename"] = func(args []any) (any, error) {
+		if len(args) != 0 {
+			return nil, Error{Position: i.currentPosition(), Message: "filename expects 0 arguments"}
+		}
+		return i.currentPosition().Filename, nil
+	}
+}
+
 // New creates an interpreter. Supplying a program enables Run and guest calls.
 func New(program ...*bytecode.Program) *Interpreter {
 	i := &Interpreter{globals: frame{vars: map[string]*cell{}}, functions: map[string]bytecode.Function{}, host: map[string]Function{}}
+	i.registerBuiltins()
 	if len(program) > 0 && program[0] != nil {
 		i.program = program[0]
 		for _, f := range program[0].Functions {
@@ -188,6 +233,9 @@ func InterpretProgramBinary(programData []byte, funcName string, args ...any) (a
 // RegisterFunction makes a Go function available to call instructions.
 // The fn parameter can be a Function (func([]any) (any, error)) or any typed Go function.
 func (i *Interpreter) RegisterFunction(name string, fn any) {
+	if isBuiltinFunction(name) {
+		panic(fmt.Sprintf("interpreter: cannot override built-in function %q", name))
+	}
 	wrapped, err := WrapFuncWithInterpreter(i, fn)
 	if err != nil {
 		panic(fmt.Sprintf("interpreter: RegisterFunction %q: %v", name, err))
@@ -238,7 +286,7 @@ func (i *Interpreter) execute(code []bytecode.Instruction, args []any, inherited
 	return i.executeFunc("<main>", code, args, inherited)
 }
 
-func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, args []any, inherited *frame) (any, error) {
+func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, args []any, inherited *frame) (retVal any, retErr error) {
 	local := &frame{vars: map[string]*cell{}}
 	if inherited != nil {
 		local = inherited
@@ -254,6 +302,19 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 	}
 	i.callStack = append(i.callStack, frameInfo)
 	defer func() {
+		for idx := len(frameInfo.defers) - 1; idx >= 0; idx-- {
+			d := frameInfo.defers[idx]
+			_, err := i.CallFunc(d.target, d.args...)
+			if err != nil {
+				if uncaught, ok := err.(uncaughtException); ok {
+					retErr = uncaught
+				} else if exc, ok := err.(ExceptionInfo); ok {
+					retErr = uncaughtException{info: exc}
+				} else {
+					retErr = err
+				}
+			}
+		}
 		i.callStack = i.callStack[:len(i.callStack)-1]
 	}()
 
@@ -410,6 +471,19 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 				return fail(e.Error())
 			}
 			stack = append(stack, v)
+		case bytecode.Defer:
+			n, ok := ins.Operand.(int)
+			if !ok || n < 0 {
+				return fail("defer requires a non-negative argument count")
+			}
+			if len(stack) < n+1 {
+				return fail("defer stack underflow")
+			}
+			start := len(stack) - n
+			argv := append([]any(nil), stack[start:]...)
+			target := stack[start-1]
+			stack = stack[:start-1]
+			frameInfo.defers = append(frameInfo.defers, deferredCall{target: target, args: argv})
 		case bytecode.Call:
 			n, ok := ins.Operand.(int)
 			if !ok || n < 0 {
@@ -682,6 +756,9 @@ func (i *Interpreter) call(ref functionRef, args []any) (any, error) {
 func (i *Interpreter) ToFunction(v any) (Function, error) {
 	if v == nil {
 		return nil, fmt.Errorf("interpreter: cannot convert nil to function")
+	}
+	if ad, ok := v.(address); ok {
+		v = ad.get()
 	}
 	switch f := v.(type) {
 	case Function:

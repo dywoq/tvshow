@@ -389,6 +389,24 @@ void Start() {
 	}
 }
 
+func TestAnalyzeDefer(t *testing.T) {
+	source := `void calculate() { int result = 2 + 2; }
+void start() {
+	defer calculate();
+}`
+	if err := analyzeSource(t, source); err != nil {
+		t.Fatalf("unexpected error analyzing valid defer statement: %v", err)
+	}
+
+	invalidCallSource := `void start() {
+	defer missing_fn();
+}`
+	err := analyzeSource(t, invalidCallSource)
+	if err == nil || !strings.Contains(err.Error(), `undefined identifier "missing_fn"`) {
+		t.Fatalf("expected error for undefined deferred function call, got %v", err)
+	}
+}
+
 func TestAnalyzeExceptions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -413,6 +431,67 @@ func TestAnalyzeExceptions(t *testing.T) {
 			name:    "catch non-string type",
 			source:  `void Start() { try { int x = 1; } catch (int err) { int y = err; } }`,
 			wantErr: `catch parameter type must be string (got "int")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyzeSource(t, tt.source)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
+func TestAnalyzeBuiltinPositionFunctions(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name:   "valid built-in position functions usage",
+			source: `int Start() { int l = line(); int c = column(); string f = filename(); return l + c; }`,
+		},
+		{
+			name:    "redefinition of line function",
+			source:  `int line() { return 0; } void Start() {}`,
+			wantErr: `redefinition of "line"`,
+		},
+		{
+			name:    "redefinition of line variable",
+			source:  `int line = 10; void Start() {}`,
+			wantErr: `redefinition of "line"`,
+		},
+		{
+			name:    "redefinition of column function",
+			source:  `int column() { return 0; } void Start() {}`,
+			wantErr: `redefinition of "column"`,
+		},
+		{
+			name:    "redefinition of filename function",
+			source:  `string filename() { return ""; } void Start() {}`,
+			wantErr: `redefinition of "filename"`,
+		},
+		{
+			name:    "line called with arguments",
+			source:  `int Start() { return line(1); }`,
+			wantErr: `wrong number of arguments to function call: expected 0, got 1`,
+		},
+		{
+			name:    "incompatible assignment from filename",
+			source:  `int Start() { int x = filename(); return x; }`,
+			wantErr: `incompatible type in initialization of "x"`,
 		},
 	}
 

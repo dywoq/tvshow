@@ -244,6 +244,18 @@ func (n *ThrowStmt) String() string {
 	return "throw " + nodeString(n.Value) + ";"
 }
 
+type DeferStmt struct {
+	Token token.Token
+	Call  *CallExpr
+	Semi  token.Token
+}
+
+func (n *DeferStmt) Position() token.Position { return n.Token.Pos }
+func (*DeferStmt) statement()                 {}
+func (n *DeferStmt) String() string {
+	return "defer " + nodeString(n.Call) + ";"
+}
+
 type CatchBlock struct {
 	Token      token.Token
 	VarType    []TypeSpec

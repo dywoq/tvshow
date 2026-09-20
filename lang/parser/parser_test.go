@@ -134,6 +134,41 @@ void Start() {
 	}
 }
 
+func TestParseDefer(t *testing.T) {
+	input := `void calculate() { int result = 2 + 2; }
+void start() {
+	defer calculate();
+}`
+	program, err := Parse(lexer.New("defer.sc", input).Tokens())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	fn := program.Declarations[1].(*FunctionDecl)
+	deferStmt, ok := fn.Body.Items[0].(*DeferStmt)
+	if !ok {
+		t.Fatalf("expected DeferStmt, got %T", fn.Body.Items[0])
+	}
+	if deferStmt.Call.Function.(*IdentExpr).Token.Literal != "calculate" {
+		t.Errorf("expected call to 'calculate', got %v", deferStmt.Call.Function)
+	}
+
+	invalidInput := `void start() {
+	defer int result = 2 + 2;
+}`
+	_, err = Parse(lexer.New("invalid_defer.sc", invalidInput).Tokens())
+	if err == nil {
+		t.Fatalf("expected parse error for non-function-call defer statement")
+	}
+
+	invalidExprInput := `void start() {
+	defer 2 + 2;
+}`
+	_, err = Parse(lexer.New("invalid_defer_expr.sc", invalidExprInput).Tokens())
+	if err == nil {
+		t.Fatalf("expected parse error for non-function-call defer statement")
+	}
+}
+
 func TestParseStringify(t *testing.T) {
 	input := `void start() {
 	int value = 42;
