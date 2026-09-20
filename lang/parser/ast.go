@@ -420,6 +420,15 @@ func (n *SizeofExpr) Position() token.Position { return n.Token.Pos }
 func (*SizeofExpr) expression()                {}
 func (n *SizeofExpr) String() string           { return n.Token.Literal + " " + nodeString(n.Value) }
 
+type StringifyExpr struct {
+	Token token.Token
+	Value Expression
+}
+
+func (n *StringifyExpr) Position() token.Position { return n.Token.Pos }
+func (*StringifyExpr) expression()                {}
+func (n *StringifyExpr) String() string           { return n.Token.Literal + "(" + nodeString(n.Value) + ")" }
+
 type CommaExpr struct{ Expressions []Expression }
 
 func (n *CommaExpr) Position() token.Position { return n.Expressions[0].Position() }

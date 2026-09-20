@@ -1159,6 +1159,14 @@ func (c *compiler) expr(e parser.Expression) error {
 		size := c.typeSize(e.Type, e.Declarator)
 		c.emit(PushLiteral, strconv.Itoa(size), e.Position())
 		return nil
+	case *parser.StringifyExpr:
+		if e.Value != nil {
+			if err := c.expr(e.Value); err != nil {
+				return err
+			}
+			c.emit(Unary, "stringify", e.Position())
+		}
+		return nil
 	case *parser.CompoundLiteralExpr:
 		return c.compoundLiteral(e)
 	case *parser.InitializerListExpr:

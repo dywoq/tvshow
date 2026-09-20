@@ -658,6 +658,24 @@ func (p *Parser) prefix() (Expression, error) {
 			}
 			x = &SizeofExpr{Token: t, Value: val}
 		}
+	case token.STRINGIFY:
+		if p.cur().Type == token.LPAREN {
+			p.next()
+			val, e := p.expr(0)
+			if e != nil {
+				return nil, e
+			}
+			if _, e = p.expect(token.RPAREN); e != nil {
+				return nil, e
+			}
+			x = &StringifyExpr{Token: t, Value: val}
+		} else {
+			val, e := p.expr(13)
+			if e != nil {
+				return nil, e
+			}
+			x = &StringifyExpr{Token: t, Value: val}
+		}
 	case token.LPAREN:
 		if p.startsDeclaration() {
 			specs, e := p.parseSpecs()

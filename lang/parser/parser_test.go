@@ -134,6 +134,27 @@ void Start() {
 	}
 }
 
+func TestParseStringify(t *testing.T) {
+	input := `void start() {
+	int value = 42;
+	string converted_value = stringify(value);
+}`
+	program, err := Parse(lexer.New("stringify.sc", input).Tokens())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	fn := program.Declarations[0].(*FunctionDecl)
+	varDecl := fn.Body.Items[1].(*VarDecl)
+	stringifyExpr, ok := varDecl.Declarators[0].Initializer.(*StringifyExpr)
+	if !ok {
+		t.Fatalf("expected StringifyExpr, got %T", varDecl.Declarators[0].Initializer)
+	}
+	ident, ok := stringifyExpr.Value.(*IdentExpr)
+	if !ok || ident.Token.Literal != "value" {
+		t.Errorf("expected IdentExpr 'value', got %v", stringifyExpr.Value)
+	}
+}
+
 func TestNodesImplementStringer(t *testing.T) {
 	var _ Node = &Program{}
 	var _ Node = &VarDecl{Specs: []TypeSpec{{Token: token.Token{}}}}

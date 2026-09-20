@@ -374,6 +374,21 @@ func TestAnalyzeFunctionAliasesAndStrictTypes(t *testing.T) {
 	}
 }
 
+func TestAnalyzeStringify(t *testing.T) {
+	source := `typedef struct Point { int x; int y; } Point;
+void Start() {
+	int a = 42;
+	Point p;
+	int arr[3];
+	string s1 = stringify(a);
+	string s2 = stringify(p);
+	string s3 = stringify(arr);
+}`
+	if err := analyzeSource(t, source); err != nil {
+		t.Fatalf("unexpected error analyzing stringify: %v", err)
+	}
+}
+
 func TestAnalyzeExceptions(t *testing.T) {
 	tests := []struct {
 		name    string
