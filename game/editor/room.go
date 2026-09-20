@@ -19,13 +19,23 @@ type Coordinates struct {
 	Y int `json:"y"`
 }
 
+// SubSprite represents sprite information within an object's sprite sheet.
+type SubSprite struct {
+	Index int `json:"index"`
+}
+
 // Object represents a room object within an object layer.
 type Object struct {
-	Type        string      `json:"type"`
-	Attributes  []string    `json:"attributes"`
-	Width       int         `json:"width"`
-	Height      int         `json:"height"`
-	Coordinates Coordinates `json:"coordinates"`
+	Type                 string      `json:"type"`
+	Attributes           []string    `json:"attributes"`
+	Width                int         `json:"width"`
+	Height               int         `json:"height"`
+	Coordinates          Coordinates `json:"coordinates"`
+	SpriteSheet          string      `json:"sprite_sheet,omitempty"`
+	SubSpriteWidth       int         `json:"sub_sprite_width,omitempty"`
+	SubSpriteHeight      int         `json:"sub_sprite_height,omitempty"`
+	SubSpritesTotalCount int         `json:"sub_sprites_total_count,omitempty"`
+	Sprites              []SubSprite `json:"sprites,omitempty"`
 }
 
 // ObjectLayer represents a layer containing objects.
@@ -191,6 +201,143 @@ func RenderTilesetLayer(layer *TilesetLayer, roomWidth, roomHeight int, baseDir 
 	}
 
 	return dst, nil
+}
+
+// ProcessObjectSpriteSheet reads the sprite sheet image for an object, computes sub_sprites_total_count,
+// and populates the object's Sprites array with sub-sprite index entries.
+func ProcessObjectSpriteSheet(obj *Object, baseDir string) error {
+	if obj.SpriteSheet == "" {
+		obj.SubSpritesTotalCount = 0
+		obj.Sprites = nil
+		return nil
+	}
+
+	if obj.SubSpriteWidth <= 0 || obj.SubSpriteHeight <= 0 {
+		return fmt.Errorf("invalid sub-sprite dimensions: %dx%d", obj.SubSpriteWidth, obj.SubSpriteHeight)
+	}
+
+	spriteSheetPath := obj.SpriteSheet
+	if !filepath.IsAbs(spriteSheetPath) && baseDir != "" {
+		spriteSheetPath = filepath.Join(baseDir, spriteSheetPath)
+	}
+
+	f, err := os.Open(spriteSheetPath)
+	if err != nil {
+		return fmt.Errorf("sprite sheet asset not found at path %q: %w", obj.SpriteSheet, err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return fmt.Errorf("failed to decode sprite sheet image %q: %w", obj.SpriteSheet, err)
+	}
+
+	bounds := img.Bounds()
+	cols := bounds.Dx() / obj.SubSpriteWidth
+	rows := bounds.Dy() / obj.SubSpriteHeight
+
+	totalCount := cols * rows
+	obj.SubSpritesTotalCount = totalCount
+
+	sprites := make([]SubSprite, totalCount)
+	for i := 0; i < totalCount; i++ {
+		sprites[i] = SubSprite{Index: i}
+	}
+	obj.Sprites = sprites
+
+	return nil
+}
+
+// LoadSubSprite extracts a single sub-sprite at the given index from an object's sprite sheet as an image.Image.
+func LoadSubSprite(obj *Object, index int, baseDir string) (image.Image, error) {
+	if obj.SpriteSheet == "" {
+		return nil, fmt.Errorf("object sprite_sheet is empty")
+	}
+
+	subW := obj.SubSpriteWidth
+	subH := obj.SubSpriteHeight
+	if subW <= 0 || subH <= 0 {
+		return nil, fmt.Errorf("invalid sub-sprite dimensions: %dx%d", subW, subH)
+	}
+
+	spriteSheetPath := obj.SpriteSheet
+	if !filepath.IsAbs(spriteSheetPath) && baseDir != "" {
+		spriteSheetPath = filepath.Join(baseDir, spriteSheetPath)
+	}
+
+	f, err := os.Open(spriteSheetPath)
+	if err != nil {
+		return nil, fmt.Errorf("sprite sheet asset not found at path %q: %w", obj.SpriteSheet, err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode sprite sheet image %q: %w", obj.SpriteSheet, err)
+	}
+
+	bounds := img.Bounds()
+	cols := bounds.Dx() / subW
+	rows := bounds.Dy() / subH
+	total := cols * rows
+
+	if index < 0 || index >= total {
+		return nil, fmt.Errorf("sub-sprite index %d out of bounds (total: %d)", index, total)
+	}
+
+	srcX := (index % cols) * subW
+	srcY := (index / cols) * subH
+
+	dst := image.NewRGBA(image.Rect(0, 0, subW, subH))
+	draw.Draw(dst, dst.Bounds(), img, image.Pt(bounds.Min.X+srcX, bounds.Min.Y+srcY), draw.Src)
+
+	return dst, nil
+}
+
+// LoadSubSprites extracts all sub-sprites from an object's sprite sheet into a slice of image.Image.
+func LoadSubSprites(obj *Object, baseDir string) ([]image.Image, error) {
+	if obj.SpriteSheet == "" {
+		return nil, fmt.Errorf("object sprite_sheet is empty")
+	}
+
+	subW := obj.SubSpriteWidth
+	subH := obj.SubSpriteHeight
+	if subW <= 0 || subH <= 0 {
+		return nil, fmt.Errorf("invalid sub-sprite dimensions: %dx%d", subW, subH)
+	}
+
+	spriteSheetPath := obj.SpriteSheet
+	if !filepath.IsAbs(spriteSheetPath) && baseDir != "" {
+		spriteSheetPath = filepath.Join(baseDir, spriteSheetPath)
+	}
+
+	f, err := os.Open(spriteSheetPath)
+	if err != nil {
+		return nil, fmt.Errorf("sprite sheet asset not found at path %q: %w", obj.SpriteSheet, err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode sprite sheet image %q: %w", obj.SpriteSheet, err)
+	}
+
+	bounds := img.Bounds()
+	cols := bounds.Dx() / subW
+	rows := bounds.Dy() / subH
+	total := cols * rows
+
+	subSprites := make([]image.Image, total)
+	for i := 0; i < total; i++ {
+		srcX := (i % cols) * subW
+		srcY := (i / cols) * subH
+
+		dst := image.NewRGBA(image.Rect(0, 0, subW, subH))
+		draw.Draw(dst, dst.Bounds(), img, image.Pt(bounds.Min.X+srcX, bounds.Min.Y+srcY), draw.Src)
+		subSprites[i] = dst
+	}
+
+	return subSprites, nil
 }
 
 // RenderRoomComposite renders all tileset layers in room order into a single composite image.Image.

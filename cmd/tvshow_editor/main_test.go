@@ -160,3 +160,68 @@ func TestTilePaletteToolsAndUndoRedo(t *testing.T) {
 	// 6. Test Secondary Tap (right click menu)
 	app.handlePreviewSecondaryTap(fyne.NewPos(50, 50), containerSize)
 }
+
+func TestObjectSpriteSheetIntegration(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	tempDir := t.TempDir()
+	ssPath := filepath.Join(tempDir, "mob_sheet.png")
+
+	// 32x16 sprite sheet -> 2 sub-sprites of 16x16
+	ssImg := image.NewRGBA(image.Rect(0, 0, 32, 16))
+	red := color.RGBA{R: 255, G: 0, B: 0, A: 255}
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			ssImg.Set(x, y, red)
+		}
+	}
+	f, err := os.Create(ssPath)
+	if err != nil {
+		t.Fatalf("failed to create temp sprite sheet: %v", err)
+	}
+	if err := png.Encode(f, ssImg); err != nil {
+		f.Close()
+		t.Fatalf("failed to encode temp sprite sheet: %v", err)
+	}
+	f.Close()
+
+	app := newEditorAppWithApp(a)
+	app.baseDir = tempDir
+
+	obj := editor.Object{
+		Type:            "mob",
+		Width:           16,
+		Height:          16,
+		SpriteSheet:     "mob_sheet.png",
+		SubSpriteWidth:  16,
+		SubSpriteHeight: 16,
+		Coordinates:     editor.Coordinates{X: 10, Y: 10},
+	}
+
+	err = editor.ProcessObjectSpriteSheet(&obj, tempDir)
+	if err != nil {
+		t.Fatalf("failed to process object sprite sheet: %v", err)
+	}
+
+	if obj.SubSpritesTotalCount != 2 {
+		t.Errorf("expected SubSpritesTotalCount 2, got %d", obj.SubSpritesTotalCount)
+	}
+
+	app.room = &editor.Room{
+		Width:  640,
+		Height: 480,
+		ObjectLayers: []editor.ObjectLayer{
+			{
+				Name:    "ObjLayer",
+				Objects: []editor.Object{obj},
+			},
+		},
+	}
+
+	app.buildUI()
+
+	if app.objList == nil {
+		t.Fatalf("expected objList to be non-nil")
+	}
+}

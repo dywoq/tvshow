@@ -35,11 +35,16 @@ The graphical application is under the `cmd/tvshow_editor/` package.
 
 Object's information consists of the following parameters that are exported into a JSON file:
 
-| **Parameter** | **Type**                     | **Description**                         |
-| ------------- | ---------------------------- | --------------------------------------- |
-| `type`        | `string`                     | The user-defined object type.           |
-| `attributes`  | `string[]`                   | The user-defined object attributes.     |
-| `coordinates` | `{ x: integer, y: integer }` | The object's coordinates within a room. |
+| **Parameter**             | **Type**                     | **Description**                                                         |
+| ------------------------- | ---------------------------- | ----------------------------------------------------------------------- |
+| `type`                    | `string`                     | The user-defined object type.                                           |
+| `attributes`              | `string[]`                   | The user-defined object attributes.                                     |
+| `coordinates`             | `{ x: integer, y: integer }` | The object's coordinates within a room.                                 |
+| `sprite_sheet`            | `string`                     | Path to an asset image file with a set of sub-sprites.                  |
+| `sub_sprite_width`        | `integer`                    | Width of a sub-sprite in the sprite sheet.                              |
+| `sub_sprite_height`       | `integer`                    | Height of a sub-sprite in the sprite sheet.                             |
+| `sub_sprites_total_count` | `integer`                    | Total count of sub-sprites in the sprite sheet.                         |
+| `sprites`                 | `struct[]`                   | Array of sub-sprites information (each containing `index`: `integer`).   |
 
 #### Tile set
 
