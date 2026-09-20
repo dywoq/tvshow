@@ -11,5 +11,6 @@ void __terminate();
 void __stdout(auto value);
 void __stderr(auto value);
 bool __room_add(string name, string filepath);
+bool __room_set_current(string name);
 
 #endif

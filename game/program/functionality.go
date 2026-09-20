@@ -24,7 +24,9 @@ func ProvideFunctionality() {
 
 	// Room functionality
 	interpret.RegisterFunction("__room_add", func(name string, filepath string) bool {
-		err := room.Add(name, filepath)
-		return err == nil
+		return room.Add(name, filepath) == nil
+	})
+	interpret.RegisterFunction("__room_set_current", func(name string) bool {
+		return room.SetCurrentRoom(name) == nil
 	})
 }
