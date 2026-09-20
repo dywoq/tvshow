@@ -656,6 +656,47 @@ func TestNewFromBinaryRejectsCorruptedData(t *testing.T) {
 	}
 }
 
+func TestBuiltinSourcePositionFunctions(t *testing.T) {
+	source := `int Start() {
+	int l = line();
+	int c = column();
+	string f = filename();
+	if (f != "interpreter.sc") return -1;
+	return l * 1000 + c;
+}`
+	program := programFromSource(t, source)
+	vm := New(program)
+
+	got, err := vm.Run("Start")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// line() is on line 2 (2000), column is 10 (2010)
+	if got != int64(2010) {
+		t.Errorf("Run = %#v, want 2010", got)
+	}
+}
+
+func TestCannotOverrideBuiltinFunctions(t *testing.T) {
+	builtins := []string{"line", "column", "filename"}
+	for _, name := range builtins {
+		t.Run(name, func(t *testing.T) {
+			vm := New()
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected panic when trying to override built-in function %q", name)
+				}
+				msg, ok := r.(string)
+				if !ok || !strings.Contains(msg, "cannot override built-in function") {
+					t.Errorf("unexpected panic message: %v", r)
+				}
+			}()
+			vm.RegisterFunction(name, func() int { return 0 })
+		})
+	}
+}
+
 func TestRunStringify(t *testing.T) {
 	source := `
 		typedef struct Point {

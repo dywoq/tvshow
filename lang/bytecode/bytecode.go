@@ -1126,7 +1126,7 @@ func (c *compiler) expr(e parser.Expression) error {
 				return err
 			}
 		}
-		c.emit(Call, len(e.Arguments), e.Open.Pos)
+		c.emit(Call, len(e.Arguments), e.Position())
 	case *parser.IndexExpr, *parser.MemberExpr:
 		if err := c.address(e); err != nil {
 			return err

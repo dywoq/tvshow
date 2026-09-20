@@ -435,6 +435,67 @@ func TestAnalyzeExceptions(t *testing.T) {
 	}
 }
 
+func TestAnalyzeBuiltinPositionFunctions(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name:   "valid built-in position functions usage",
+			source: `int Start() { int l = line(); int c = column(); string f = filename(); return l + c; }`,
+		},
+		{
+			name:    "redefinition of line function",
+			source:  `int line() { return 0; } void Start() {}`,
+			wantErr: `redefinition of "line"`,
+		},
+		{
+			name:    "redefinition of line variable",
+			source:  `int line = 10; void Start() {}`,
+			wantErr: `redefinition of "line"`,
+		},
+		{
+			name:    "redefinition of column function",
+			source:  `int column() { return 0; } void Start() {}`,
+			wantErr: `redefinition of "column"`,
+		},
+		{
+			name:    "redefinition of filename function",
+			source:  `string filename() { return ""; } void Start() {}`,
+			wantErr: `redefinition of "filename"`,
+		},
+		{
+			name:    "line called with arguments",
+			source:  `int Start() { return line(1); }`,
+			wantErr: `wrong number of arguments to function call: expected 0, got 1`,
+		},
+		{
+			name:    "incompatible assignment from filename",
+			source:  `int Start() { int x = filename(); return x; }`,
+			wantErr: `incompatible type in initialization of "x"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyzeSource(t, tt.source)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func TestAnalyzeLocalVariablesAndReturnStatements(t *testing.T) {
 	tests := []struct {
 		name    string
