@@ -29,4 +29,18 @@ func ProvideFunctionality() {
 	interpret.RegisterFunction("__room_set_current", func(name string) bool {
 		return room.SetCurrentRoom(name) == nil
 	})
+	interpret.RegisterFunction("__room_set_object_pos", func(ttype string, x, y int) bool {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				obj.Data.Coordinates.X = x
+				obj.Data.Coordinates.Y = y 
+				return true
+			}
+		}
+		return false
+	})
 }

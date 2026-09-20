@@ -15,6 +15,7 @@ void game_add_rooms() {
 }
 
 void game_frame() {
+	alarm_update();
 	if (!game_initialized) {
 		try {
 			game_add_rooms();
@@ -23,5 +24,4 @@ void game_frame() {
 			error("A room failed to add: " + exception, true);
 		}
 	}
-	alarm_update();
 }

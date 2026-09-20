@@ -101,7 +101,6 @@ func (w *Window) Run() error {
 
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle(w.Title)
-	ebiten.SetTPS(30)
 	err = ebiten.RunGame(&ebitenWindow{
 		w: w,
 	})
