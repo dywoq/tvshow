@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"tvshow/game/editor"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // Room consists of the room's information.
@@ -40,7 +42,7 @@ func Add(name string, filepath string) error {
 func SetCurrentRoom(name string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	if _, ok := rooms[name]; ok {
+	if _, ok := rooms[name]; !ok {
 		return fmt.Errorf("room %q does not exist", name)
 	}
 	currentRoom = name
@@ -52,8 +54,22 @@ func SetCurrentRoom(name string) error {
 func GetCurrentRoom() (*Room, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	if _, ok := rooms[currentRoom]; ok {
+	if _, ok := rooms[currentRoom]; !ok {
 		return nil, fmt.Errorf("room %q does not exist", currentRoom)
 	}
 	return rooms[currentRoom], nil
+}
+
+func Painter(screen *ebiten.Image) {
+	room, err := GetCurrentRoom()
+	if err != nil {
+		return
+	}
+	for _, tileset := range room.Data.TilesetLayers {
+		img, err := editor.RenderTilesetLayer(&tileset, room.Data.Width, room.Data.Height, "./")
+		if err != nil {
+			continue
+		}
+		screen.DrawImage(ebiten.NewImageFromImage(img), nil)
+	}
 }

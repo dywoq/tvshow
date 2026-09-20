@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"tvshow/game/core"
 	"tvshow/game/program"
+	"tvshow/game/room"
 	"tvshow/game/runtime"
 )
 
@@ -18,6 +19,9 @@ func Run() error {
 		},
 		Initializers: []core.Initializer{
 			program.Initializer,
+		},
+		Painters: []core.Painter{
+			room.Painter,
 		},
 	}
 	if err := w.Run(); err != nil {
