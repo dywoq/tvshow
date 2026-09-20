@@ -100,44 +100,59 @@ func TestTilePaletteToolsAndUndoRedo(t *testing.T) {
 		t.Errorf("expected 1 tile after redo, got %d", len(app.room.TilesetLayers[0].Tiles))
 	}
 
-	// 3. Test Tools (Selection tool)
+	// 3. Test Selection Box creation & dragging selected items
 	app.toolSelect.SetSelected("Selection Tool")
 	if app.activeTool != ToolSelection {
 		t.Errorf("expected activeTool ToolSelection, got %v", app.activeTool)
 	}
 
 	containerSize := fyne.NewSize(640, 480)
-	// Tap on tile at (32, 32)
-	app.handlePreviewTap(fyne.NewPos(32, 32), containerSize)
-	if app.selectedTileIdx != 0 {
-		t.Errorf("expected selectedTileIdx 0, got %d", app.selectedTileIdx)
+	// Create selection box covering (0,0) to (120, 120) which contains tile (32, 32) and object (100, 100)
+	app.handlePreviewDrag(fyne.NewPos(0, 0), containerSize)
+	app.handlePreviewDrag(fyne.NewPos(120, 120), containerSize)
+	app.handlePreviewDragEnd()
+
+	if !app.hasSelectionBox {
+		t.Errorf("expected hasSelectionBox to be true")
+	}
+	if len(app.selectedTiles) != 1 {
+		t.Errorf("expected 1 selected tile in box, got %d", len(app.selectedTiles))
+	}
+	if len(app.selectedObjects) != 1 {
+		t.Errorf("expected 1 selected object in box, got %d", len(app.selectedObjects))
 	}
 
-	// 4. Test Brush tool continuous drag
+	// Move selection box by dragging from (50, 50) to (70, 70) (delta +20, +20)
+	app.handlePreviewDrag(fyne.NewPos(50, 50), containerSize)
+	app.handlePreviewDrag(fyne.NewPos(70, 70), containerSize)
+	app.handlePreviewDragEnd()
+
+	obj := app.room.ObjectLayers[0].Objects[0]
+	if obj.Coordinates.X != 120 || obj.Coordinates.Y != 120 {
+		t.Errorf("expected selected object moved to (120, 120), got (%d, %d)", obj.Coordinates.X, obj.Coordinates.Y)
+	}
+
+	tile := app.room.TilesetLayers[0].Tiles[0]
+	if tile.Coordinates.X != 52 || tile.Coordinates.Y != 52 {
+		t.Errorf("expected selected tile moved to (52, 52), got (%d, %d)", tile.Coordinates.X, tile.Coordinates.Y)
+	}
+
+	// Delete selected items using deleteSelectedItems
+	app.deleteSelectedItems()
+	if len(app.room.ObjectLayers[0].Objects) != 0 {
+		t.Errorf("expected 0 objects after deletion, got %d", len(app.room.ObjectLayers[0].Objects))
+	}
+	if len(app.room.TilesetLayers[0].Tiles) != 0 {
+		t.Errorf("expected 0 tiles after deletion, got %d", len(app.room.TilesetLayers[0].Tiles))
+	}
+
+	// Test Brush tool continuous drag
 	app.toolSelect.SetSelected("Brush Tool")
 	app.handlePreviewDrag(fyne.NewPos(64, 64), containerSize)
 	app.handlePreviewDrag(fyne.NewPos(80, 64), containerSize)
 	app.handlePreviewDragEnd()
 
-	if len(app.room.TilesetLayers[0].Tiles) < 3 {
-		t.Errorf("expected at least 3 tiles placed via brush drag, got %d", len(app.room.TilesetLayers[0].Tiles))
-	}
-
-	// 5. Test Object Dragging in room preview
-	// Drag object at (100, 100) to (150, 150)
-	app.handlePreviewDrag(fyne.NewPos(100, 100), containerSize)
-	app.handlePreviewDrag(fyne.NewPos(150, 150), containerSize)
-	app.handlePreviewDragEnd()
-
-	obj := app.room.ObjectLayers[0].Objects[0]
-	if obj.Coordinates.X != 150 || obj.Coordinates.Y != 150 {
-		t.Errorf("expected object moved to (150, 150), got (%d, %d)", obj.Coordinates.X, obj.Coordinates.Y)
-	}
-
-	// Undo object move
-	app.undo()
-	objUndo := app.room.ObjectLayers[0].Objects[0]
-	if objUndo.Coordinates.X != 100 || objUndo.Coordinates.Y != 100 {
-		t.Errorf("expected object position reverted to (100, 100) after undo, got (%d, %d)", objUndo.Coordinates.X, objUndo.Coordinates.Y)
+	if len(app.room.TilesetLayers[0].Tiles) < 2 {
+		t.Errorf("expected at least 2 tiles placed via brush drag, got %d", len(app.room.TilesetLayers[0].Tiles))
 	}
 }

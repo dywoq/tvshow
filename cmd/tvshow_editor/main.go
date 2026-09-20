@@ -36,6 +36,16 @@ const (
 	ToolSelection EditorTool = "selection"
 )
 
+type SelectedTileRef struct {
+	LayerIdx int
+	TileIdx  int
+}
+
+type SelectedObjRef struct {
+	LayerIdx int
+	ObjIdx   int
+}
+
 type EditorApp struct {
 	fyneApp     fyne.App
 	window      fyne.Window
@@ -76,6 +86,16 @@ type EditorApp struct {
 	// Object dragging state
 	draggedObjLayerIdx int
 	draggedObjIdx      int
+
+	// Selection state
+	isSelecting       bool
+	selectionStart    editor.Coordinates
+	selectionEnd      editor.Coordinates
+	hasSelectionBox   bool
+	selectedTiles     []SelectedTileRef
+	selectedObjects   []SelectedObjRef
+	isMovingSelection bool
+	moveStartCoords   editor.Coordinates
 
 	// Undo / Redo history
 	undoStack []*editor.Room
@@ -243,16 +263,20 @@ func (e *EditorApp) buildUI() fyne.CanvasObject {
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() { e.redo() }),
 	)
 
-	// Register Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) keyboard shortcuts
+	// Register Undo (Ctrl+Z), Redo (Ctrl+Shift+Z), and Delete shortcuts
 	undoShortcutCtrl := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierControl}
 	undoShortcutCmd := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierSuper}
 	redoShortcutCtrl := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift}
 	redoShortcutCmd := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift}
+	deleteShortcut := &desktop.CustomShortcut{KeyName: fyne.KeyDelete}
+	backspaceShortcut := &desktop.CustomShortcut{KeyName: fyne.KeyBackspace}
 
 	e.window.Canvas().AddShortcut(undoShortcutCtrl, func(shortcut fyne.Shortcut) { e.undo() })
 	e.window.Canvas().AddShortcut(undoShortcutCmd, func(shortcut fyne.Shortcut) { e.undo() })
 	e.window.Canvas().AddShortcut(redoShortcutCtrl, func(shortcut fyne.Shortcut) { e.redo() })
 	e.window.Canvas().AddShortcut(redoShortcutCmd, func(shortcut fyne.Shortcut) { e.redo() })
+	e.window.Canvas().AddShortcut(deleteShortcut, func(shortcut fyne.Shortcut) { e.deleteSelectedItems() })
+	e.window.Canvas().AddShortcut(backspaceShortcut, func(shortcut fyne.Shortcut) { e.deleteSelectedItems() })
 
 	mainContent := container.NewBorder(
 		toolbar,
@@ -852,9 +876,120 @@ func (e *EditorApp) findObjectAt(roomX, roomY int) (layerIdx int, objIdx int, fo
 	return -1, -1, false
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func (e *EditorApp) deleteSelectedItems() {
+	if len(e.selectedTiles) == 0 && len(e.selectedObjects) == 0 {
+		return
+	}
+	e.recordUndo()
+
+	objsToRemove := make(map[int]map[int]bool)
+	for _, ref := range e.selectedObjects {
+		if objsToRemove[ref.LayerIdx] == nil {
+			objsToRemove[ref.LayerIdx] = make(map[int]bool)
+		}
+		objsToRemove[ref.LayerIdx][ref.ObjIdx] = true
+	}
+
+	for lIdx, layer := range e.room.ObjectLayers {
+		if toDel, ok := objsToRemove[lIdx]; ok {
+			var newObjs []editor.Object
+			for oIdx, obj := range layer.Objects {
+				if !toDel[oIdx] {
+					newObjs = append(newObjs, obj)
+				}
+			}
+			e.room.ObjectLayers[lIdx].Objects = newObjs
+		}
+	}
+
+	tilesToRemove := make(map[int]map[int]bool)
+	for _, ref := range e.selectedTiles {
+		if tilesToRemove[ref.LayerIdx] == nil {
+			tilesToRemove[ref.LayerIdx] = make(map[int]bool)
+		}
+		tilesToRemove[ref.LayerIdx][ref.TileIdx] = true
+	}
+
+	for lIdx, layer := range e.room.TilesetLayers {
+		if toDel, ok := tilesToRemove[lIdx]; ok {
+			var newTiles []editor.Tile
+			for tIdx, tile := range layer.Tiles {
+				if !toDel[tIdx] {
+					newTiles = append(newTiles, tile)
+				}
+			}
+			e.room.TilesetLayers[lIdx].Tiles = newTiles
+		}
+	}
+
+	e.selectedObjects = nil
+	e.selectedTiles = nil
+	e.hasSelectionBox = false
+	e.statusLabel.SetText("Deleted selected tiles and objects")
+	e.refreshObjectList()
+	e.refreshTileList()
+	e.refreshPreview()
+}
+
+func (e *EditorApp) updateSelectionFromRect(minX, maxX, minY, maxY int) {
+	e.selectedObjects = nil
+	e.selectedTiles = nil
+
+	for lIdx, layer := range e.room.ObjectLayers {
+		for oIdx, obj := range layer.Objects {
+			if obj.Coordinates.X >= minX-8 && obj.Coordinates.X <= maxX+8 &&
+				obj.Coordinates.Y >= minY-8 && obj.Coordinates.Y <= maxY+8 {
+				e.selectedObjects = append(e.selectedObjects, SelectedObjRef{LayerIdx: lIdx, ObjIdx: oIdx})
+			}
+		}
+	}
+
+	for lIdx, layer := range e.room.TilesetLayers {
+		tileW := layer.TileWidth
+		tileH := layer.TileHeight
+		if tileW <= 0 || tileH <= 0 {
+			tileW, tileH = 16, 16
+		}
+		for tIdx, tile := range layer.Tiles {
+			if tile.Coordinates != nil {
+				tx := tile.Coordinates.X
+				ty := tile.Coordinates.Y
+				if tx+tileW >= minX && tx <= maxX && ty+tileH >= minY && ty <= maxY {
+					e.selectedTiles = append(e.selectedTiles, SelectedTileRef{LayerIdx: lIdx, TileIdx: tIdx})
+				}
+			}
+		}
+	}
+
+	e.statusLabel.SetText(fmt.Sprintf("Selection contains %d objects, %d tiles", len(e.selectedObjects), len(e.selectedTiles)))
+}
+
 func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size) {
 	roomX, roomY, ok := e.convertPosToRoomCoords(pos, containerSize)
 	if !ok {
+		return
+	}
+
+	if e.activeTool == ToolSelection {
+		e.selectionStart = editor.Coordinates{X: roomX - 8, Y: roomY - 8}
+		e.selectionEnd = editor.Coordinates{X: roomX + 8, Y: roomY + 8}
+		e.hasSelectionBox = true
+		e.updateSelectionFromRect(roomX-8, roomX+8, roomY-8, roomY+8)
+		e.refreshPreview()
 		return
 	}
 
@@ -873,11 +1008,7 @@ func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size)
 		return
 	}
 
-	if e.activeTool == ToolSelection {
-		e.selectTileAtRoomCoords(roomX, roomY)
-	} else {
-		e.placeTileAtRoomCoords(roomX, roomY)
-	}
+	e.placeTileAtRoomCoords(roomX, roomY)
 }
 
 func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size) {
@@ -887,21 +1018,81 @@ func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size
 	}
 
 	if !e.isDragging {
-		lIdx, oIdx, foundObj := e.findObjectAt(roomX, roomY)
-		if foundObj {
-			e.draggedObjLayerIdx = lIdx
-			e.draggedObjIdx = oIdx
-			e.recordUndo()
-			e.isDragging = true
-		} else if e.activeTool == ToolBrush {
-			e.draggedObjLayerIdx = -1
-			e.draggedObjIdx = -1
-			e.recordUndo()
-			e.isDragging = true
+		if e.activeTool == ToolSelection {
+			minX := min(e.selectionStart.X, e.selectionEnd.X)
+			maxX := max(e.selectionStart.X, e.selectionEnd.X)
+			minY := min(e.selectionStart.Y, e.selectionEnd.Y)
+			maxY := max(e.selectionStart.Y, e.selectionEnd.Y)
+
+			if e.hasSelectionBox && roomX >= minX && roomX <= maxX && roomY >= minY && roomY <= maxY {
+				e.isMovingSelection = true
+				e.moveStartCoords = editor.Coordinates{X: roomX, Y: roomY}
+				e.recordUndo()
+				e.isDragging = true
+			} else {
+				e.isSelecting = true
+				e.selectionStart = editor.Coordinates{X: roomX, Y: roomY}
+				e.selectionEnd = editor.Coordinates{X: roomX, Y: roomY}
+				e.hasSelectionBox = true
+				e.updateSelectionFromRect(roomX, roomX, roomY, roomY)
+				e.isDragging = true
+			}
+		} else {
+			lIdx, oIdx, foundObj := e.findObjectAt(roomX, roomY)
+			if foundObj {
+				e.draggedObjLayerIdx = lIdx
+				e.draggedObjIdx = oIdx
+				e.recordUndo()
+				e.isDragging = true
+			} else if e.activeTool == ToolBrush {
+				e.draggedObjLayerIdx = -1
+				e.draggedObjIdx = -1
+				e.recordUndo()
+				e.isDragging = true
+			}
 		}
 	}
 
-	if e.draggedObjLayerIdx >= 0 && e.draggedObjIdx >= 0 {
+	if e.isMovingSelection {
+		dx := roomX - e.moveStartCoords.X
+		dy := roomY - e.moveStartCoords.Y
+		if dx != 0 || dy != 0 {
+			e.moveStartCoords = editor.Coordinates{X: roomX, Y: roomY}
+			e.selectionStart.X += dx
+			e.selectionStart.Y += dy
+			e.selectionEnd.X += dx
+			e.selectionEnd.Y += dy
+
+			for _, ref := range e.selectedObjects {
+				if ref.LayerIdx < len(e.room.ObjectLayers) && ref.ObjIdx < len(e.room.ObjectLayers[ref.LayerIdx].Objects) {
+					e.room.ObjectLayers[ref.LayerIdx].Objects[ref.ObjIdx].Coordinates.X += dx
+					e.room.ObjectLayers[ref.LayerIdx].Objects[ref.ObjIdx].Coordinates.Y += dy
+				}
+			}
+
+			for _, ref := range e.selectedTiles {
+				if ref.LayerIdx < len(e.room.TilesetLayers) && ref.TileIdx < len(e.room.TilesetLayers[ref.LayerIdx].Tiles) {
+					t := &e.room.TilesetLayers[ref.LayerIdx].Tiles[ref.TileIdx]
+					if t.Coordinates != nil {
+						t.Coordinates.X += dx
+						t.Coordinates.Y += dy
+					}
+				}
+			}
+
+			e.refreshObjectList()
+			e.refreshTileList()
+			e.refreshPreview()
+		}
+	} else if e.isSelecting {
+		e.selectionEnd = editor.Coordinates{X: roomX, Y: roomY}
+		minX := min(e.selectionStart.X, e.selectionEnd.X)
+		maxX := max(e.selectionStart.X, e.selectionEnd.X)
+		minY := min(e.selectionStart.Y, e.selectionEnd.Y)
+		maxY := max(e.selectionStart.Y, e.selectionEnd.Y)
+		e.updateSelectionFromRect(minX, maxX, minY, maxY)
+		e.refreshPreview()
+	} else if e.draggedObjLayerIdx >= 0 && e.draggedObjIdx >= 0 {
 		if e.draggedObjLayerIdx < len(e.room.ObjectLayers) && e.draggedObjIdx < len(e.room.ObjectLayers[e.draggedObjLayerIdx].Objects) {
 			obj := &e.room.ObjectLayers[e.draggedObjLayerIdx].Objects[e.draggedObjIdx]
 			obj.Coordinates = editor.Coordinates{X: roomX, Y: roomY}
@@ -934,6 +1125,8 @@ func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size
 
 func (e *EditorApp) handlePreviewDragEnd() {
 	e.isDragging = false
+	e.isSelecting = false
+	e.isMovingSelection = false
 	e.draggedObjLayerIdx = -1
 	e.draggedObjIdx = -1
 	e.lastBrushX = -1
@@ -1062,6 +1255,33 @@ func (e *EditorApp) refreshPreview() {
 				for y := th; y < bounds.Dy(); y += th {
 					for x := 0; x < bounds.Dx(); x++ {
 						rgbaImg.Set(x, y, gridColor)
+					}
+				}
+			}
+		}
+	}
+
+	// Draw selection box if active
+	if e.hasSelectionBox {
+		minX := min(e.selectionStart.X, e.selectionEnd.X)
+		maxX := max(e.selectionStart.X, e.selectionEnd.X)
+		minY := min(e.selectionStart.Y, e.selectionEnd.Y)
+		maxY := max(e.selectionStart.Y, e.selectionEnd.Y)
+
+		for x := minX; x <= maxX; x++ {
+			for y := minY; y <= maxY; y++ {
+				if x >= 0 && x < bounds.Dx() && y >= 0 && y < bounds.Dy() {
+					if x == minX || x == maxX || y == minY || y == maxY {
+						rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 255})
+					} else {
+						orig := rgbaImg.RGBAAt(x, y)
+						blended := color.RGBA{
+							R: uint8((int(orig.R)*185 + 255*70) / 255),
+							G: uint8((int(orig.G)*185 + 255*70) / 255),
+							B: uint8((int(orig.B)*185 + 255*70) / 255),
+							A: 255,
+						}
+						rgbaImg.Set(x, y, blended)
 					}
 				}
 			}
