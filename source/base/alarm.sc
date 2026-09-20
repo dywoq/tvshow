@@ -38,7 +38,7 @@ vector_t alarms;
 //
 //		func
 //
-/			A pointer to the alarm function.
+//			A pointer to the alarm function.
 //
 void alarm_schedule(int duration, alarm_func_t func) {
 	vector_push(alarms, (alarm_t){ .duration = duration, .func = func });
@@ -56,7 +56,11 @@ void alarm_update() {
 		alarm_t alarm = alarms.storage[i];
 		alarm.duration--;
 		if (alarm.duration < 0) {
-			alarm.func();
+			try {
+				alarm.func();
+			} catch (string exception) {
+				error("alarm_update: caught an exception when iterated over alarm " + stringify(alarm) + ": " + exception, false);
+			}
 			vector_delete(alarms, i);
 		}
 	}
