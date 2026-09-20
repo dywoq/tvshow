@@ -3,7 +3,14 @@
 ## Overview
 
 The room editor is a cross-platform graphical application that supports editing rooms and exporting them into JSON format.
-It is developed in Golang and is in the `game/editor` package of the repository.
+It is developed in Golang and is in the `game/editor` package of the repository. It relies on Fyne.
+
+## Goals
+
+- Provide a convenient way to edit and export rooms in the editor.
+
+- Provide a structured way to parse room files, render tile set layers into the `image.Image` interface
+  in the programming interface of the `game/editor` package.
 
 ### JSON File structure
 
