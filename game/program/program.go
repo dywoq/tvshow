@@ -40,7 +40,7 @@ func Initializer() error {
 		return err
 	}
 	ProvideFunctionality()
-	
+
 	runtime.SpawnTask(&runtime.Task{
 		Func:     Task,
 		Status:   runtime.TaskStatusReady,
@@ -53,6 +53,7 @@ func Initializer() error {
 
 func Task(t *runtime.Task) (runtime.TaskAction, error) {
 	if state == StateTerminated {
+		runtime.ActivateSignal("window_close")
 		return runtime.TaskActionFinish, nil
 	}
 	_, err := interpret.Run("game_frame")
