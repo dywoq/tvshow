@@ -1032,6 +1032,12 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 		}
 		return Type{Kind: TypeInt}
 
+	case *parser.StringifyExpr:
+		if e.Value != nil {
+			a.expression(e.Value)
+		}
+		return Type{Kind: TypeString}
+
 	case *parser.CommaExpr:
 		var last Type
 		for _, x := range e.Expressions {

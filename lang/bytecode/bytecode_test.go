@@ -188,6 +188,23 @@ func TestTranslateCompoundLiteralsAndInitializerLists(t *testing.T) {
 	}
 }
 
+func TestTranslateStringify(t *testing.T) {
+	program := translateSource(t, `int Start() { int a = 42; string s = stringify(a); return 0; }`)
+	if len(program.Functions) != 1 {
+		t.Fatalf("functions = %d, want 1", len(program.Functions))
+	}
+	foundUnaryStringify := false
+	for _, ins := range program.Functions[0].Code {
+		if ins.Opcode == Unary && ins.Operand == "stringify" {
+			foundUnaryStringify = true
+			break
+		}
+	}
+	if !foundUnaryStringify {
+		t.Errorf("missing Unary opcode with operand 'stringify'")
+	}
+}
+
 func TestTranslateStringAndSizeof(t *testing.T) {
 	program := translateSource(t, `string s = "hello"; int Start() { int a = sizeof(string); int b = sizeof(s); return a + b; }`)
 	if len(program.Globals) == 0 {

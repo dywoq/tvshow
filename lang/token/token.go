@@ -166,6 +166,7 @@ const (
 	THROW     // throw
 	TRY       // try
 	CATCH     // catch
+	STRINGIFY // stringify
 
 	keywordEnd
 )
@@ -275,6 +276,7 @@ var (
 		THROW:     "throw",
 		TRY:       "try",
 		CATCH:     "catch",
+		STRINGIFY: "stringify",
 	}
 	keywords = map[string]TokenType{
 		"auto":       AUTO,
@@ -312,6 +314,7 @@ var (
 		"throw":      THROW,
 		"try":        TRY,
 		"catch":      CATCH,
+		"stringify":  STRINGIFY,
 	}
 )
 

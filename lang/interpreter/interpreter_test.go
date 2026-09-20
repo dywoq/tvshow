@@ -655,3 +655,75 @@ func TestNewFromBinaryRejectsCorruptedData(t *testing.T) {
 		t.Error("NewFromBinary accepted corrupt data")
 	}
 }
+
+func TestRunStringify(t *testing.T) {
+	source := `
+		typedef struct Point {
+			int x;
+			int y;
+		} Point;
+
+		string TestInt() {
+			int value = 42;
+			return stringify(value);
+		}
+
+		string TestFloat() {
+			float value = 3.14;
+			return stringify(value);
+		}
+
+		string TestString() {
+			string value = "scintilla";
+			return stringify(value);
+		}
+
+		string TestExpr() {
+			return stringify(10 + 20);
+		}
+
+		string TestArray() {
+			int arr[3] = {1, 2, 3};
+			return stringify(arr);
+		}
+
+		string TestStruct() {
+			Point p;
+			p.x = 10;
+			p.y = 20;
+			return stringify(p);
+		}
+	`
+	program := programFromSource(t, source)
+	vm := New(program)
+
+	resInt, err := vm.Run("TestInt")
+	if err != nil || resInt != "42" {
+		t.Errorf("TestInt got %v, err %v; want '42'", resInt, err)
+	}
+
+	resFloat, err := vm.Run("TestFloat")
+	if err != nil || resFloat != "3.14" {
+		t.Errorf("TestFloat got %v, err %v; want '3.14'", resFloat, err)
+	}
+
+	resString, err := vm.Run("TestString")
+	if err != nil || resString != "scintilla" {
+		t.Errorf("TestString got %v, err %v; want 'scintilla'", resString, err)
+	}
+
+	resExpr, err := vm.Run("TestExpr")
+	if err != nil || resExpr != "30" {
+		t.Errorf("TestExpr got %v, err %v; want '30'", resExpr, err)
+	}
+
+	resArr, err := vm.Run("TestArray")
+	if err != nil || resArr != "[1 2 3]" {
+		t.Errorf("TestArray got %v, err %v; want '[1 2 3]'", resArr, err)
+	}
+
+	resStruct, err := vm.Run("TestStruct")
+	if err != nil || (resStruct != "map[x:10 y:20]" && resStruct != "map[y:20 x:10]") {
+		t.Errorf("TestStruct got %v, err %v", resStruct, err)
+	}
+}

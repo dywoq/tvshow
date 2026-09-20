@@ -810,6 +810,12 @@ func unary(op any, v any) (any, error) {
 		}
 		return int64(8), nil
 	}
+	if s == "stringify" {
+		if ad, ok := v.(address); ok {
+			v = ad.get()
+		}
+		return fmt.Sprint(v), nil
+	}
 	if s == "!" {
 		return boolInt(!truth(v)), nil
 	}
