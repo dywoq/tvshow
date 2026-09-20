@@ -19,16 +19,10 @@ func Initializer() error {
 	if err != nil {
 		return err
 	}
-	got, err := interpreter.NewFromBinary(content)
+	interpret, err = interpreter.NewFromBinary(content)
 	if err != nil {
 		return err
 	}
-	interpret = got
-	runtime.SpawnTask(&runtime.Task{
-		Func:     Task,
-		Status:   runtime.TaskStatusReady,
-		Priority: runtime.TaskPriorityHigh,
-	})
 	return nil
 }
 

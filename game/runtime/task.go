@@ -61,8 +61,6 @@ func SpawnTask(t *Task) {
 }
 
 func TaskExecutor() error {
-	taskMu.Lock()
-	defer taskMu.Unlock()
 	if len(tasks) == 0 {
 		return nil
 	}
