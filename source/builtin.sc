@@ -7,11 +7,28 @@
 // Built-in functionality provided by the interpreter
 //
 
+//
+// GAME'S STATE MANAGEMENT
+//
+
 void __terminate();
+
+//
+// PRINTING FUNCTIONALITY
+//
+
 void __stdout(auto value);
 void __stderr(auto value);
+
+//
+// ROOM MANAGEMENT
+//
+
 bool __room_add(string name, string filepath);
 bool __room_set_current(string name);
 bool __room_set_object_pos(string type, int x, int y);
+bool __room_set_object_subsprite_index(string type, int subsprite_index);
+int __room_get_object_subsprite_count(string type);
+bool __room_object_has_attributes(string type, string attributes[]);
 
 #endif

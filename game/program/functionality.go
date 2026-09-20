@@ -3,6 +3,7 @@ package program
 import (
 	"fmt"
 	"os"
+	"slices"
 	"tvshow/game/room"
 )
 
@@ -37,8 +38,66 @@ func ProvideFunctionality() {
 		for _, obj := range room.Objects {
 			if obj.Data.Type == ttype {
 				obj.Data.Coordinates.X = x
-				obj.Data.Coordinates.Y = y 
+				obj.Data.Coordinates.Y = y
 				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_set_object_subsprite_index", func(ttype string, subspriteIndex int) bool {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				obj.CurrentSubSpriteIndex = subspriteIndex
+				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_get_object_subsprite_count", func(ttype string) int {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				return obj.Data.SubSpritesTotalCount
+			}
+		}
+		return -1
+	})
+	interpret.RegisterFunction("__room_object_exists", func(ttype string) bool {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_object_has_attributes", func(ttype string, attributes []string) bool {
+		if len(attributes) == 0 {
+			return false
+		}
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				satisfiedCount := 0
+				for _, attribute := range attributes {
+					if slices.Contains(obj.Data.Attributes, attribute) {
+						satisfiedCount++
+					}
+				}
+				return satisfiedCount == len(attributes)
 			}
 		}
 		return false
