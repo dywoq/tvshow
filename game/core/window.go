@@ -18,6 +18,7 @@ type Window struct {
 	Title        string
 	Executors    []Executor
 	Initializers []Initializer
+	Painters     []Painter
 	Cleaners     []Cleaner
 	state        windowState
 }
@@ -26,6 +27,10 @@ type Window struct {
 // It can be used to run guest program code, calculate coordinates and etc.
 // related to game logic.
 type Executor func() error
+
+// Painter is a function executed internally by [Window] structure.
+// It is responsible for drawing something into screen.
+type Painter func(screen *ebiten.Image)
 
 // Initializer is a function that is executed before the game.
 // It is used to initialize game's critical components.
@@ -58,7 +63,11 @@ func (e *ebitenWindow) Update() error {
 	return nil
 }
 
-func (e *ebitenWindow) Draw(screen *ebiten.Image) {}
+func (e *ebitenWindow) Draw(screen *ebiten.Image) {
+	for _, p := range e.w.Painters {
+		p(screen)
+	}
+}
 
 func (e *ebitenWindow) Layout(int, int) (int, int) {
 	return e.w.Width, e.w.Height
