@@ -12,8 +12,9 @@ type Room struct {
 }
 
 var (
-	mu    sync.Mutex
-	rooms = map[string]*Room{}
+	mu          sync.Mutex
+	rooms       = map[string]*Room{}
+	currentRoom = ""
 )
 
 // Add loads the room data into memory and saves it in the underlying map.
@@ -31,5 +32,17 @@ func Add(name string, filepath string) error {
 	rooms[name] = &Room{
 		Data: d,
 	}
+	return nil
+}
+
+// SetCurrentRoom sets the current room to the one having the provided name.
+// Returns an error if it does not exist.
+func SetCurrentRoom(name string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := rooms[name]; ok {
+		return fmt.Errorf("room %q does not exist", name)
+	}
+	currentRoom = name
 	return nil
 }
