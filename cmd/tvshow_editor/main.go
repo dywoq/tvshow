@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -40,12 +39,12 @@ type EditorApp struct {
 	selectedObjIdx widget.ListItemID
 
 	// Tileset Layer controls
-	tsLayerSelect  *widget.Select
-	tsPathEntry    *widget.Entry
-	tsAttrEntry    *widget.Entry
-	tileWEntry     *widget.Entry
-	tileHEntry     *widget.Entry
-	tileList       *widget.List
+	tsLayerSelect   *widget.Select
+	tsPathEntry     *widget.Entry
+	tsAttrEntry     *widget.Entry
+	tileWEntry      *widget.Entry
+	tileHEntry      *widget.Entry
+	tileList        *widget.List
 	selectedTileIdx widget.ListItemID
 }
 
