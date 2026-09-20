@@ -168,6 +168,136 @@ func TestRenderTilesetLayerMissingFile(t *testing.T) {
 	}
 }
 
+func TestObjectSpriteSheet(t *testing.T) {
+	tempDir := t.TempDir()
+	spriteSheetPath := filepath.Join(tempDir, "hero_sheet.png")
+
+	// Create a 32x32 sprite sheet image (4 sub-sprites of 16x16: 0=red, 1=green, 2=blue, 3=white)
+	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	red := color.RGBA{R: 255, G: 0, B: 0, A: 255}
+	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
+	blue := color.RGBA{R: 0, G: 0, B: 255, A: 255}
+	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			img.Set(x, y, red)
+		}
+		for x := 16; x < 32; x++ {
+			img.Set(x, y, green)
+		}
+	}
+	for y := 16; y < 32; y++ {
+		for x := 0; x < 16; x++ {
+			img.Set(x, y, blue)
+		}
+		for x := 16; x < 32; x++ {
+			img.Set(x, y, white)
+		}
+	}
+
+	f, err := os.Create(spriteSheetPath)
+	if err != nil {
+		t.Fatalf("Failed to create temp sprite sheet: %v", err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode sprite sheet PNG: %v", err)
+	}
+	f.Close()
+
+	obj := Object{
+		Type:            "hero",
+		SpriteSheet:     "hero_sheet.png",
+		SubSpriteWidth:  16,
+		SubSpriteHeight: 16,
+		Coordinates:     Coordinates{X: 10, Y: 10},
+	}
+
+	err = ProcessObjectSpriteSheet(&obj, tempDir)
+	if err != nil {
+		t.Fatalf("ProcessObjectSpriteSheet failed: %v", err)
+	}
+
+	if obj.SubSpritesTotalCount != 4 {
+		t.Errorf("Expected sub_sprites_total_count 4, got %d", obj.SubSpritesTotalCount)
+	}
+	if len(obj.Sprites) != 4 {
+		t.Fatalf("Expected 4 sprites in array, got %d", len(obj.Sprites))
+	}
+	for i, s := range obj.Sprites {
+		if s.Index != i {
+			t.Errorf("Expected sprite index %d, got %d", i, s.Index)
+		}
+	}
+
+	// Test LoadSubSprite
+	sub0, err := LoadSubSprite(&obj, 0, tempDir)
+	if err != nil {
+		t.Fatalf("LoadSubSprite 0 failed: %v", err)
+	}
+	r, g, b, _ := sub0.At(0, 0).RGBA()
+	if r>>8 != 255 || g>>8 != 0 || b>>8 != 0 {
+		t.Errorf("Expected red for sub-sprite 0")
+	}
+
+	sub3, err := LoadSubSprite(&obj, 3, tempDir)
+	if err != nil {
+		t.Fatalf("LoadSubSprite 3 failed: %v", err)
+	}
+	r3, g3, b3, _ := sub3.At(0, 0).RGBA()
+	if r3>>8 != 255 || g3>>8 != 255 || b3>>8 != 255 {
+		t.Errorf("Expected white for sub-sprite 3")
+	}
+
+	// Test LoadSubSprites
+	allSub, err := LoadSubSprites(&obj, tempDir)
+	if err != nil {
+		t.Fatalf("LoadSubSprites failed: %v", err)
+	}
+	if len(allSub) != 4 {
+		t.Errorf("Expected 4 sub-sprites, got %d", len(allSub))
+	}
+
+	// Test JSON roundtrip with sprite sheet fields
+	room := &Room{
+		Width:  100,
+		Height: 100,
+		ObjectLayers: []ObjectLayer{
+			{
+				Objects: []Object{obj},
+			},
+		},
+	}
+
+	data, err := SaveRoomToBytes(room)
+	if err != nil {
+		t.Fatalf("SaveRoomToBytes failed: %v", err)
+	}
+
+	loadedRoom, err := LoadRoomFromBytes(data)
+	if err != nil {
+		t.Fatalf("LoadRoomFromBytes failed: %v", err)
+	}
+
+	loadedObj := loadedRoom.ObjectLayers[0].Objects[0]
+	if loadedObj.SpriteSheet != "hero_sheet.png" {
+		t.Errorf("Expected sprite_sheet 'hero_sheet.png', got %q", loadedObj.SpriteSheet)
+	}
+	if loadedObj.SubSpriteWidth != 16 || loadedObj.SubSpriteHeight != 16 {
+		t.Errorf("Expected sub-sprite 16x16, got %dx%d", loadedObj.SubSpriteWidth, loadedObj.SubSpriteHeight)
+	}
+	if loadedObj.SubSpritesTotalCount != 4 {
+		t.Errorf("Expected sub_sprites_total_count 4, got %d", loadedObj.SubSpritesTotalCount)
+	}
+	if len(loadedObj.Sprites) != 4 {
+		t.Fatalf("Expected 4 sprites in array, got %d", len(loadedObj.Sprites))
+	}
+	if loadedObj.Sprites[2].Index != 2 {
+		t.Errorf("Expected sprite index 2, got %d", loadedObj.Sprites[2].Index)
+	}
+}
+
 func TestObjectWidthAndHeight(t *testing.T) {
 	jsonStr := `{
 		"width": 100,

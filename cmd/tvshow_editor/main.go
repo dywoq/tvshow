@@ -333,8 +333,12 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			idx := e.objLayerSelect.SelectedIndex()
 			if idx >= 0 && idx < len(e.room.ObjectLayers) {
 				obj := e.room.ObjectLayers[idx].Objects[id]
-				item.(*widget.Label).SetText(fmt.Sprintf("[%d] Type: %s | Size: %dx%d | Pos: (%d, %d) | Attrs: %v",
-					id, obj.Type, obj.Width, obj.Height, obj.Coordinates.X, obj.Coordinates.Y, obj.Attributes))
+				ssInfo := ""
+				if obj.SpriteSheet != "" {
+					ssInfo = fmt.Sprintf(" | SpriteSheet: %s (%dx%d, Total: %d)", obj.SpriteSheet, obj.SubSpriteWidth, obj.SubSpriteHeight, obj.SubSpritesTotalCount)
+				}
+				item.(*widget.Label).SetText(fmt.Sprintf("[%d] Type: %s | Size: %dx%d | Pos: (%d, %d) | Attrs: %v%s",
+					id, obj.Type, obj.Width, obj.Height, obj.Coordinates.X, obj.Coordinates.Y, obj.Attributes, ssInfo))
 			}
 		},
 	)
@@ -359,6 +363,9 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 		xEntry.SetText("0")
 		yEntry := widget.NewEntry()
 		yEntry.SetText("0")
+		spriteSheetEntry := widget.NewEntry()
+		subWEntry := widget.NewEntry()
+		subHEntry := widget.NewEntry()
 
 		form := widget.NewForm(
 			widget.NewFormItem("Type", typeEntry),
@@ -367,6 +374,9 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			widget.NewFormItem("Attributes (comma-separated)", attrsEntry),
 			widget.NewFormItem("X", xEntry),
 			widget.NewFormItem("Y", yEntry),
+			widget.NewFormItem("Sprite Sheet Path (optional)", spriteSheetEntry),
+			widget.NewFormItem("Sub-Sprite Width (optional)", subWEntry),
+			widget.NewFormItem("Sub-Sprite Height (optional)", subHEntry),
 		)
 
 		dialog.ShowCustomConfirm("Add Object", "Add", "Cancel", form, func(ok bool) {
@@ -377,6 +387,8 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			y, _ := strconv.Atoi(yEntry.Text)
 			w, _ := strconv.Atoi(wEntry.Text)
 			h, _ := strconv.Atoi(hEntry.Text)
+			subW, _ := strconv.Atoi(subWEntry.Text)
+			subH, _ := strconv.Atoi(subHEntry.Text)
 			var attrs []string
 			if attrsEntry.Text != "" {
 				for _, a := range strings.Split(attrsEntry.Text, ",") {
@@ -385,15 +397,26 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 			}
 
 			newObj := editor.Object{
-				Type:        typeEntry.Text,
-				Width:       w,
-				Height:      h,
-				Attributes:  attrs,
-				Coordinates: editor.Coordinates{X: x, Y: y},
+				Type:            typeEntry.Text,
+				Width:           w,
+				Height:          h,
+				Attributes:      attrs,
+				Coordinates:     editor.Coordinates{X: x, Y: y},
+				SpriteSheet:     spriteSheetEntry.Text,
+				SubSpriteWidth:  subW,
+				SubSpriteHeight: subH,
 			}
+
+			if newObj.SpriteSheet != "" {
+				if err := editor.ProcessObjectSpriteSheet(&newObj, e.baseDir); err != nil {
+					dialog.ShowError(fmt.Errorf("failed to process sprite sheet: %w", err), e.window)
+				}
+			}
+
 			e.recordUndo()
 			e.room.ObjectLayers[layerIdx].Objects = append(e.room.ObjectLayers[layerIdx].Objects, newObj)
 			e.refreshObjectList()
+			e.refreshPreview()
 		}, e.window)
 	})
 
@@ -1485,24 +1508,44 @@ func (e *EditorApp) refreshPreview() {
 		}
 	}
 
-	// Draw objects on room preview: shown as the first letter of their type with a random color every time
+	// Draw objects on room preview: draw first sub-sprite if sprite sheet exists, else letter representation
 	for _, layer := range e.room.ObjectLayers {
 		for _, obj := range layer.Objects {
-			if len(obj.Type) == 0 {
-				continue
+			drawnSprite := false
+			if obj.SpriteSheet != "" && len(obj.Sprites) > 0 {
+				subImg, err := editor.LoadSubSprite(&obj, 0, e.baseDir)
+				if err == nil {
+					w := obj.Width
+					h := obj.Height
+					if w <= 0 {
+						w = obj.SubSpriteWidth
+					}
+					if h <= 0 {
+						h = obj.SubSpriteHeight
+					}
+					dstRect := image.Rect(obj.Coordinates.X, obj.Coordinates.Y, obj.Coordinates.X+w, obj.Coordinates.Y+h)
+					draw.Draw(rgbaImg, dstRect, subImg, image.Point{}, draw.Over)
+					drawnSprite = true
+				}
 			}
-			runes := []rune(obj.Type)
-			letter := string(runes[0])
 
-			// Generate random letter color every time
-			clr := color.RGBA{
-				R: uint8(rand.Intn(256)),
-				G: uint8(rand.Intn(256)),
-				B: uint8(rand.Intn(256)),
-				A: 255,
+			if !drawnSprite {
+				if len(obj.Type) == 0 {
+					continue
+				}
+				runes := []rune(obj.Type)
+				letter := string(runes[0])
+
+				// Generate random letter color every time
+				clr := color.RGBA{
+					R: uint8(rand.Intn(256)),
+					G: uint8(rand.Intn(256)),
+					B: uint8(rand.Intn(256)),
+					A: 255,
+				}
+
+				drawObjectLetter(rgbaImg, letter, obj.Coordinates.X, obj.Coordinates.Y, obj.Width, obj.Height, clr)
 			}
-
-			drawObjectLetter(rgbaImg, letter, obj.Coordinates.X, obj.Coordinates.Y, obj.Width, obj.Height, clr)
 		}
 	}
 
@@ -1565,6 +1608,16 @@ func (e *EditorApp) openRoom() {
 		e.room = rm
 		e.currentPath = filePath
 		e.baseDir = filepath.Dir(filePath)
+
+		for lIdx := range e.room.ObjectLayers {
+			for oIdx := range e.room.ObjectLayers[lIdx].Objects {
+				obj := &e.room.ObjectLayers[lIdx].Objects[oIdx]
+				if obj.SpriteSheet != "" && len(obj.Sprites) == 0 {
+					_ = editor.ProcessObjectSpriteSheet(obj, e.baseDir)
+				}
+			}
+		}
+
 		e.refreshUI()
 		e.statusLabel.SetText("Opened " + filePath)
 	}, e.window)
