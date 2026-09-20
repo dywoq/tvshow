@@ -92,7 +92,9 @@ Source Code (.sc)
 The codebase is organized under `lang/` into seven distinct Go packages:
 
 ### 1. `lang/token`
+
 Defines lexical tokens, source positions (`Position`), keywords, and operators.
+
 - **Key Types & Functions:**
   - `Position`: Represents `Filename`, `Line`, `Column`, and `Offset`.
   - `Token`: Combines `Type`, `Literal` string, and `Pos`.
@@ -100,7 +102,9 @@ Defines lexical tokens, source positions (`Position`), keywords, and operators.
   - `RegisterKeyword(name, tok, stringRepr)`: Extends the keyword table dynamically.
 
 ### 2. `lang/lexer`
+
 Performs lexical analysis on Scintilla source text.
+
 - **Features:**
   - Standard C99 tokenization: Identifiers, Integer literals (decimal, octal `077`, hex `0xFF`), Floating-point literals (`3.14`, `1e-10`), Character (`'a'`), String (`"hello"`).
   - Suffix support: Integer (`u`, `l`) and Float (`f`, `l`) suffixes.
@@ -111,7 +115,9 @@ Performs lexical analysis on Scintilla source text.
   - `Tokens() []token.Token`
 
 ### 3. `lang/macro`
+
 Token-based preprocessor supporting C99 preprocessor directives and macro expansion.
+
 - **Supported Directives & Features:**
   - Macros: Object-like (`#define FOO 1`) and Function-like (`#define ADD(a, b) ((a)+(b))`).
   - Variadic Macros: Support for `...` and `__VA_ARGS__`.
@@ -127,7 +133,9 @@ Token-based preprocessor supporting C99 preprocessor directives and macro expans
   - `(e *Expander) Expand(input []token.Token) ([]token.Token, error)`
 
 ### 4. `lang/parser`
+
 Constructs an AST from preprocessed tokens.
+
 - **AST Node Types (`Node`, `Expression`, `Statement`, `Declaration`):**
   - Declarations: `VarDecl`, `FunctionDecl`, `StaticAssertDecl`, `TypeSpec` (`struct`, `union`, `enum`, `typedef`).
   - Statements: `BlockStmt`, `ExprStmt`, `IfStmt`, `SwitchStmt`, `CaseStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `JumpStmt` (`break`, `continue`, `return`, `goto`), `LabelStmt`, `ThrowStmt`, `TryCatchStmt`.
@@ -136,7 +144,9 @@ Constructs an AST from preprocessed tokens.
   - `Parse(tokens []token.Token) (*Program, error)`
 
 ### 5. `lang/semantic`
+
 Validates AST semantics, types, and qualifiers prior to bytecode translation.
+
 - **Validation Checks:**
   - **Qualifier Checks (`const`):** Enforces immutability for `const` variables, `const` struct fields, fields of `const` struct instances, elements of `const` arrays, and target values of pointers-to-const. Rejects assignments (`=`, `+=`, etc.) and modifications (`++`, `--`) targeting `const` lvalues. Requires initializers for local `const` variables.
   - **Array Checks:** Verifies subscripted expressions are arrays, pointers, or strings and subscript indices are integers. Enforces non-negative array bounds, rejects arrays with `void` element types, and validates initializer list bounds against fixed array sizes.
@@ -151,7 +161,9 @@ Validates AST semantics, types, and qualifiers prior to bytecode translation.
   - `Analyze(program *parser.Program) error`
 
 ### 6. `lang/bytecode`
+
 Translates semantically validated AST into stack-machine instructions. Runs semantic analysis automatically during translation.
+
 - **Key Features:**
   - Lowers high-level control flow (`if`, `while`, `for`, `switch`, `goto`, `break`, `continue`) to resolved zero-based jump instruction indices.
   - Retains left-to-right short-circuit evaluation for `&&`, `||`, and `?:`.
@@ -167,7 +179,9 @@ Translates semantically validated AST into stack-machine instructions. Runs sema
   - `DecodeInstruction(data []byte) (Instruction, error)`
 
 ### 7. `lang/interpreter`
+
 Stack-based virtual machine executing Scintilla bytecode programs.
+
 - **Key Features:**
   - Executes bytecode instructions (`Execute`, `Run`).
   - Maintained variable scopes (`globals` and call stack frames).
@@ -203,34 +217,34 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 
 ### Instruction Opcodes
 
-| Opcode | Operand | Effect / Description |
-| --- | --- | --- |
-| `declare` | `string` (var name) | Creates a variable cell in the current execution frame. |
-| `push_literal` | `string` (raw literal) | Parses and pushes an integer, floating-point, character, or string literal. |
-| `load` | `string` (var/func name) | Pushes the value of a variable or a function reference. |
-| `address` | `string` (var name) | Pushes an address handle referencing a named variable. |
-| `address_index` | none | Pops `index` and base array `address`/slice, pushes an address handle for `base[index]`. |
-| `address_member` | `string` (member) | Pops aggregate `address`, pushes an address handle for `aggregate.member`. |
-| `load_indirect` | none | Pops an address handle and pushes its contained value. |
-| `store_indirect` | none | Pops value and address handle, stores value to address, and leaves value on stack. |
-| `unary` | `string` (op symbol) | Applies unary operation (`!`, `~`, `+`, `-`). |
-| `to_bool` | none | Pops value and pushes boolean truth value `0` or `1`. |
-| `binary` | `string` (op symbol) | Pops right and left operands, applies binary operation (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&`, `\|`, `^`, `<<`, `>>`). |
-| `dup` | none | Duplicates top value on stack. |
-| `rotate` | none | Rotates top 3 stack values (`a, b, c` -> `b, a, c`); preserves old value in postfix updates. |
-| `pop` | none | Discards top value from stack. |
-| `call` | `int` (arg count) | Pops argument values and target function, executes call, pushes result. |
-| `jump` | `int` (instruction index) | Unconditional jump to target instruction index. |
-| `jump_if_false` | `int` (instruction index) | Pops condition; jumps if false (`0`). |
-| `jump_if_true` | `int` (instruction index) | Pops condition; jumps if true (non-zero). |
-| `return` | none | Returns current stack top value (or `nil` if stack is empty). |
-| `make_array` | `int` (array length) | Pushes a new `[]any` slice of specified initial length onto the stack. |
-| `make_struct` | none | Pushes a new `map[string]any` map onto the stack. |
-| `convert` | `string` (target type) | Pops value, converts value to specified target type (or reports a type conversion error if types do not match), and pushes result onto stack. |
-| `throw` | none | Pops exception string from stack and initiates exception unwinding. |
-| `push_catch` | `int` (instruction index) | Registers a catch handler target for the current execution frame. |
-| `pop_catch` | none | Removes the top catch handler from the current execution frame. |
-| `swap` | none | Swaps top two values on the operand stack. |
+| Opcode           | Operand                   | Effect / Description                                                                                                                            |
+| ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `declare`        | `string` (var name)       | Creates a variable cell in the current execution frame.                                                                                         |
+| `push_literal`   | `string` (raw literal)    | Parses and pushes an integer, floating-point, character, or string literal.                                                                     |
+| `load`           | `string` (var/func name)  | Pushes the value of a variable or a function reference.                                                                                         |
+| `address`        | `string` (var name)       | Pushes an address handle referencing a named variable.                                                                                          |
+| `address_index`  | none                      | Pops `index` and base array `address`/slice, pushes an address handle for `base[index]`.                                                        |
+| `address_member` | `string` (member)         | Pops aggregate `address`, pushes an address handle for `aggregate.member`.                                                                      |
+| `load_indirect`  | none                      | Pops an address handle and pushes its contained value.                                                                                          |
+| `store_indirect` | none                      | Pops value and address handle, stores value to address, and leaves value on stack.                                                              |
+| `unary`          | `string` (op symbol)      | Applies unary operation (`!`, `~`, `+`, `-`).                                                                                                   |
+| `to_bool`        | none                      | Pops value and pushes boolean truth value `0` or `1`.                                                                                           |
+| `binary`         | `string` (op symbol)      | Pops right and left operands, applies binary operation (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&`, `\|`, `^`, `<<`, `>>`). |
+| `dup`            | none                      | Duplicates top value on stack.                                                                                                                  |
+| `rotate`         | none                      | Rotates top 3 stack values (`a, b, c` -> `b, a, c`); preserves old value in postfix updates.                                                    |
+| `pop`            | none                      | Discards top value from stack.                                                                                                                  |
+| `call`           | `int` (arg count)         | Pops argument values and target function, executes call, pushes result.                                                                         |
+| `jump`           | `int` (instruction index) | Unconditional jump to target instruction index.                                                                                                 |
+| `jump_if_false`  | `int` (instruction index) | Pops condition; jumps if false (`0`).                                                                                                           |
+| `jump_if_true`   | `int` (instruction index) | Pops condition; jumps if true (non-zero).                                                                                                       |
+| `return`         | none                      | Returns current stack top value (or `nil` if stack is empty).                                                                                   |
+| `make_array`     | `int` (array length)      | Pushes a new `[]any` slice of specified initial length onto the stack.                                                                          |
+| `make_struct`    | none                      | Pushes a new `map[string]any` map onto the stack.                                                                                               |
+| `convert`        | `string` (target type)    | Pops value, converts value to specified target type (or reports a type conversion error if types do not match), and pushes result onto stack.   |
+| `throw`          | none                      | Pops exception string from stack and initiates exception unwinding.                                                                             |
+| `push_catch`     | `int` (instruction index) | Registers a catch handler target for the current execution frame.                                                                               |
+| `pop_catch`      | none                      | Removes the top catch handler from the current execution frame.                                                                                 |
+| `swap`           | none                      | Swaps top two values on the operand stack.                                                                                                      |
 
 ---
 
@@ -265,6 +279,7 @@ int Start() {
 ### 2. Strict Type Checking
 
 The semantic analyzer (`lang/semantic`) enforces strict type safety for function calls and assignments:
+
 - **Signature Matching:** Variable initializations, assignments, and function parameters expecting function pointers require matching return types, argument counts, and argument types.
 - **Callable Verification:** Calling non-function types (e.g. `int x = 5; x()`) is rejected with a compile-time error (`called object of type "int" is not a function`).
 - **Argument & Return Validation:** Calls on function pointers/aliases check parameter count and argument types against the function pointer signature.
@@ -335,6 +350,7 @@ result, err := interp.Run("Start")
 ```
 
 `ExceptionInfo` contains:
+
 - `Message`: The thrown exception string.
 - `Position`: The source location (`token.Position`) where `throw` occurred.
 - `FuncName`: The function name where `throw` occurred.
@@ -393,6 +409,7 @@ result, err := interp.Run("Start")
 Bytecode structures can be serialized into portable, architecture-independent binary streams (`Version 1` layout) and reversed back into full Go structs (`UnmarshalBinary`, `DecodeProgram`, `DecodeInstruction`):
 
 #### 1. Instruction Layout (`Instruction.MarshalBinary`)
+
 1. **Header (3 bytes):**
    - Byte 0: Instruction Format Version (`1`)
    - Byte 1: Opcode numeric identifier (1-22)
@@ -408,6 +425,7 @@ Bytecode structures can be serialized into portable, architecture-independent bi
    - Offset: `int64` Big-Endian signed integer.
 
 #### 2. Whole Program Layout (`Program.MarshalBinary`)
+
 1. **Header (1 byte):**
    - Byte 0: Program Format Version (`1`)
 2. **Globals Section:**
@@ -428,71 +446,71 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 
 ### 1. Preprocessor Compliance
 
-| C99 Preprocessor Feature | Scintilla Status | Details & Notes |
-| --- | --- | --- |
-| `#define` (Object-like) | **Supported** | Full macro definition and expansion. |
-| `#define` (Function-like) | **Supported** | Parameterized macro expansion with argument substitution. |
-| Variadic Macros (`...`, `__VA_ARGS__`) | **Supported** | Variadic arguments in function-like macros. |
-| Stringification (`#`) & Token Pasting (`##`) | **Supported** | Converts tokens to string literals (`#`) and pastes tokens (`##`). |
-| `#undef` | **Supported** | Removes macro definition. |
-| `#include` | **Supported** | Resolver-backed custom header inclusion via `IncludeResolver`. |
-| Conditionals (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`) | **Supported** | Full conditional compilation evaluation. |
-| `defined` Operator | **Supported** | Evaluated during `#if`/`#elif` expansion (`defined(X)` or `defined X`). |
-| `#error` | **Supported** | Signals a compilation/preprocessor error with an optional message. |
-| `#line`, `#pragma` | **Removed / Not Supported** | Preprocessor directives `#line` and `#pragma` are not supported. |
-| Predefined Macros (`__LINE__`, `__FILE__`, etc.) | **Removed / Not Supported** | Standard predefined macros such as `__LINE__` and `__FILE__` are not supported. |
+| C99 Preprocessor Feature                                              | Scintilla Status            | Details & Notes                                                                 |
+| --------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `#define` (Object-like)                                               | **Supported**               | Full macro definition and expansion.                                            |
+| `#define` (Function-like)                                             | **Supported**               | Parameterized macro expansion with argument substitution.                       |
+| Variadic Macros (`...`, `__VA_ARGS__`)                                | **Supported**               | Variadic arguments in function-like macros.                                     |
+| Stringification (`#`) & Token Pasting (`##`)                          | **Supported**               | Converts tokens to string literals (`#`) and pastes tokens (`##`).              |
+| `#undef`                                                              | **Supported**               | Removes macro definition.                                                       |
+| `#include`                                                            | **Supported**               | Resolver-backed custom header inclusion via `IncludeResolver`.                  |
+| Conditionals (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`) | **Supported**               | Full conditional compilation evaluation.                                        |
+| `defined` Operator                                                    | **Supported**               | Evaluated during `#if`/`#elif` expansion (`defined(X)` or `defined X`).         |
+| `#error`                                                              | **Supported**               | Signals a compilation/preprocessor error with an optional message.              |
+| `#line`, `#pragma`                                                    | **Removed / Not Supported** | Preprocessor directives `#line` and `#pragma` are not supported.                |
+| Predefined Macros (`__LINE__`, `__FILE__`, etc.)                      | **Removed / Not Supported** | Standard predefined macros such as `__LINE__` and `__FILE__` are not supported. |
 
 ### 2. Lexical & Language Syntax Compliance
 
-| C99 Syntax Feature | Scintilla Status | Details & Notes |
-| --- | --- | --- |
-| Keywords | **Supported** | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
-| Comments | **Supported** | Line comments (`//`) and block comments (`/* ... */`). |
-| Numeric Literals | **Supported** | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`). |
-| Character & String Literals | **Supported** | Escaped sequences handled by lexer/interpreter. |
-| Trigraphs / Digraphs | *Not Implemented* | Alternative token representations are not supported. |
+| C99 Syntax Feature          | Scintilla Status  | Details & Notes                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keywords                    | **Supported**     | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Comments                    | **Supported**     | Line comments (`//`) and block comments (`/* ... */`).                                                                                                                                                                                                                                                                                                                                                                 |
+| Numeric Literals            | **Supported**     | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`).                                                                                                                                                                                                                                                                                                      |
+| Character & String Literals | **Supported**     | Escaped sequences handled by lexer/interpreter.                                                                                                                                                                                                                                                                                                                                                                        |
+| Trigraphs / Digraphs        | _Not Implemented_ | Alternative token representations are not supported.                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### 3. Statements & Control Flow
 
-| C99 Statement Feature | Scintilla Status | Details & Notes |
-| --- | --- | --- |
-| Selection (`if`, `if`-`else`) | **Supported** | Translated to conditional jumps. |
-| `switch`, `case`, `default` | **Supported** | Full switch statement lowerings with fall-through support, integer quantity checks, and case label validation. |
-| Iteration (`while`, `do`-`while`) | **Supported** | Translated to jump constructs. |
-| `for` Loops | **Supported** | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`). |
-| Jump Statements (`break`, `continue`, `return`) | **Supported** | Validated during semantic pass for enclosing loop/switch scopes, void vs non-void returns, and return expression type compatibility. |
-| Exception Statements (`throw`, `try`-`catch`) | **Supported** | Native bytecode-level exception handling. Semantic analyzer verifies string exception types for throw expressions and catch parameters. Host code can register `SetExceptionHandler`. |
-| `goto` & Labeled Statements | **Supported** | Resolved to instruction jump targets in function context. |
-| `return` | **Supported** | Enforces void vs non-void function return value rules and type compatibility. |
+| C99 Statement Feature                           | Scintilla Status | Details & Notes                                                                                                                                                                       |
+| ----------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Selection (`if`, `if`-`else`)                   | **Supported**    | Translated to conditional jumps.                                                                                                                                                      |
+| `switch`, `case`, `default`                     | **Supported**    | Full switch statement lowerings with fall-through support, integer quantity checks, and case label validation.                                                                        |
+| Iteration (`while`, `do`-`while`)               | **Supported**    | Translated to jump constructs.                                                                                                                                                        |
+| `for` Loops                                     | **Supported**    | Includes support for C99 loop-header variable declarations (`for (int i = 0; ...)`).                                                                                                  |
+| Jump Statements (`break`, `continue`, `return`) | **Supported**    | Validated during semantic pass for enclosing loop/switch scopes, void vs non-void returns, and return expression type compatibility.                                                  |
+| Exception Statements (`throw`, `try`-`catch`)   | **Supported**    | Native bytecode-level exception handling. Semantic analyzer verifies string exception types for throw expressions and catch parameters. Host code can register `SetExceptionHandler`. |
+| `goto` & Labeled Statements                     | **Supported**    | Resolved to instruction jump targets in function context.                                                                                                                             |
+| `return`                                        | **Supported**    | Enforces void vs non-void function return value rules and type compatibility.                                                                                                         |
 
 ### 4. Declarations & Types
 
-| C99 Type / Declaration Feature | Scintilla Status | Details & Notes |
-| --- | --- | --- |
-| Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported** | Lexed, parsed, semantically validated, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. `void` checked for invalid variable, field, or parameter declarations. |
-| Structs (`struct`) & Unions (`union`) | **Supported** | Member declaration parsing, duplicate member validation, void member rejection, member access operator validation (`.` vs `->`), and runtime `map[string]any` field access. |
-| Enumerations (`enum`) | **Supported** | Enumerator constants registered in value symbol scope. |
-| Typedefs (`typedef`) | **Supported** | Custom type identifiers tracked in parser and semantic scopes, including function pointer and function signature aliases (`typedef int (*BinOp)(int, int)`). |
-| Array Declarations | **Supported** | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking. |
-| Specifiers (`const`, `auto`) | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Type conversions (casts) on `auto` variables convert values to specified target types at runtime, reporting a type conversion error if types do not match. Note: `static`, `extern`, `inline`, `register`, `volatile`, and `restrict` keywords removed. |
-| Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.) | *Divergent* | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`). |
+| C99 Type / Declaration Feature                                             | Scintilla Status                    | Details & Notes                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Primitive Types (`int`, `float`, `char`, `string`, `double`, `void`, etc.) | **Supported**                       | Lexed, parsed, semantically validated, and evaluated at runtime using Go dynamic representations (`int64`, `float64`, `string`). Includes native `string` type. `void` checked for invalid variable, field, or parameter declarations.                                                                                                                                                                                   |
+| Structs (`struct`) & Unions (`union`)                                      | **Supported**                       | Member declaration parsing, duplicate member validation, void member rejection, member access operator validation (`.` vs `->`), and runtime `map[string]any` field access.                                                                                                                                                                                                                                              |
+| Enumerations (`enum`)                                                      | **Supported**                       | Enumerator constants registered in value symbol scope.                                                                                                                                                                                                                                                                                                                                                                   |
+| Typedefs (`typedef`)                                                       | **Supported**                       | Custom type identifiers tracked in parser and semantic scopes, including function pointer and function signature aliases (`typedef int (*BinOp)(int, int)`).                                                                                                                                                                                                                                                             |
+| Array Declarations                                                         | **Supported**                       | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking.                                                                                                                                                                                                                             |
+| Specifiers (`const`, `auto`)                                               | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Type conversions (casts) on `auto` variables convert values to specified target types at runtime, reporting a type conversion error if types do not match. Note: `static`, `extern`, `inline`, `register`, `volatile`, and `restrict` keywords removed. |
+| Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.)                         | _Divergent_                         | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`).                                                                                                                                                                                                                                                                                                          |
 
 ### 5. Expressions & Operators
 
-| C99 Expression Feature | Scintilla Status | Details & Notes |
-| --- | --- | --- |
-| Primary Expressions & Identifiers | **Supported** | Identifiers, constants, string literals, parenthesized expressions. |
-| Postfix / Prefix (`++`, `--`) | **Supported** | Address-based update semantics (`Rotate` opcode preserves postfix value); semantic analyzer rejects modification of `const` lvalues. |
-| Unary Operators (`+`, `-`, `!`, `~`) | **Supported** | Integer and floating-point unary evaluation with operand type checks. |
-| Address-Of (`&`) & Dereference (`*`) | **Supported** | Syntax and lvalue address resolution supported; dereferencing pointers to `const` produces read-only lvalues. |
-| Binary Arithmetic & Bitwise Operators | **Supported** | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. Bitwise operators strictly restricted to integer operands. |
-| Relational & Equality Operators | **Supported** | `<`, `>`, `<=`, `>=`, `==`, `!=` with type compatibility checking. |
-| Logical Operators (`&&`, `\|\|`) | **Supported** | Short-circuit evaluation retained via conditional jumps. |
-| Conditional Operator (`?:`) | **Supported** | Short-circuit ternary evaluation retained via conditional jumps with branch type compatibility checking. |
-| Assignment & Compound Assignment | **Supported** | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement. |
-| Comma Expression (`,`) | **Supported** | Sequential evaluation yielding last expression result. |
-| Function Calls | **Supported** | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer and function alias calls (`fn(a, b)` or `(*fn)(a, b)`). |
-| Cast Expressions (`(type)expr`) | **Supported** | Parsed, type-checked during semantic analysis, and evaluated at runtime. Converts `auto` variables to specified target types, reporting a type conversion error if types do not match. |
-| `sizeof` Operator | **Supported** | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions. |
-| Compound Literals & Initializer Lists | **Supported** | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists. |
-| `_Static_assert` | **Parsed Only** | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination. |
+| C99 Expression Feature                | Scintilla Status | Details & Notes                                                                                                                                                                                  |
+| ------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Primary Expressions & Identifiers     | **Supported**    | Identifiers, constants, string literals, parenthesized expressions.                                                                                                                              |
+| Postfix / Prefix (`++`, `--`)         | **Supported**    | Address-based update semantics (`Rotate` opcode preserves postfix value); semantic analyzer rejects modification of `const` lvalues.                                                             |
+| Unary Operators (`+`, `-`, `!`, `~`)  | **Supported**    | Integer and floating-point unary evaluation with operand type checks.                                                                                                                            |
+| Address-Of (`&`) & Dereference (`*`)  | **Supported**    | Syntax and lvalue address resolution supported; dereferencing pointers to `const` produces read-only lvalues.                                                                                    |
+| Binary Arithmetic & Bitwise Operators | **Supported**    | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. Bitwise operators strictly restricted to integer operands.                                                                                  |
+| Relational & Equality Operators       | **Supported**    | `<`, `>`, `<=`, `>=`, `==`, `!=` with type compatibility checking.                                                                                                                               |
+| Logical Operators (`&&`, `\|\|`)      | **Supported**    | Short-circuit evaluation retained via conditional jumps.                                                                                                                                         |
+| Conditional Operator (`?:`)           | **Supported**    | Short-circuit ternary evaluation retained via conditional jumps with branch type compatibility checking.                                                                                         |
+| Assignment & Compound Assignment      | **Supported**    | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement.                                                                          |
+| Comma Expression (`,`)                | **Supported**    | Sequential evaluation yielding last expression result.                                                                                                                                           |
+| Function Calls                        | **Supported**    | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer and function alias calls (`fn(a, b)` or `(*fn)(a, b)`). |
+| Cast Expressions (`(type)expr`)       | **Supported**    | Parsed, type-checked during semantic analysis, and evaluated at runtime. Converts `auto` variables to specified target types, reporting a type conversion error if types do not match.           |
+| `sizeof` Operator                     | **Supported**    | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions.                                                    |
+| Compound Literals & Initializer Lists | **Supported**    | Full parsing, semantic analysis, bytecode lowering, and VM execution for struct/array compound literals and designated initializer lists.                                                        |
+| `_Static_assert`                      | **Parsed Only**  | Syntactically parsed in AST; semantic analyzer evaluates condition without compile-time termination.                                                                                             |
