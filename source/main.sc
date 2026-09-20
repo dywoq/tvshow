@@ -5,13 +5,20 @@
 
 bool game_initialized = false;
 
+void game_add_rooms() {
+	if (!__room_add("tvscene", "assets/rooms/tvscene.json")) {
+		throw "adding the tvscene room failed";
+	}
+}
+
 void game_frame() {
 	if (!game_initialized) {
-		if (!__room_add("rm_startup", "./assets/room/startup.json")) {
-			error("failed to load rm_startup file", true);
-			return;
+		try {
+			game_add_rooms();
+			game_initialized = true;
+		} catch (string exception) {
+			error("A room failed to add: " + exception, true);
 		}
-		game_initialized = true;
 	}
 	alarm_update();
 }

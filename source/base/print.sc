@@ -18,7 +18,7 @@
 //			The value to print. It is converted into the string.
 //
 void info(auto v) {
-	__stdout("INFO: " + stringify(v));
+	__stdout("tvshow info: " + stringify(v));
 }
 
 //
@@ -34,7 +34,7 @@ void info(auto v) {
 //			The value to print. It is converted into the string.
 //
 void warn(auto v) {
-	__stdout("WARNING: " + stringify(v));
+	__stdout("tvshow warning: " + stringify(v));
 }
 
 //
@@ -54,9 +54,8 @@ void warn(auto v) {
 //			Whether to terminate the program.
 //
 void error(auto v, bool terminate) {
-	__stderr("ERROR: " + stringify(v));
+	__stderr("tvshow error: " + stringify(v));
 	if (terminate) {
-		__stderr("Terminating program due to an error \"" + stringify(v) + "\"");
 		runtime_lifecycle_stop();
 	}
 }
