@@ -1607,7 +1607,8 @@ func (e *EditorApp) openRoom() {
 
 		e.room = rm
 		e.currentPath = filePath
-		e.baseDir = filepath.Dir(filePath)
+		workingDirectory, _ := os.Getwd() 
+		e.baseDir = workingDirectory
 
 		for lIdx := range e.room.ObjectLayers {
 			for oIdx := range e.room.ObjectLayers[lIdx].Objects {
@@ -1650,9 +1651,9 @@ func (e *EditorApp) exportRoom() {
 			dialog.ShowError(err, e.window)
 			return
 		}
-
 		e.currentPath = filePath
-		e.baseDir = filepath.Dir(filePath)
+		workingDirectory, _ := os.Getwd() 
+		e.baseDir = workingDirectory
 		e.statusLabel.SetText("Exported to " + filePath)
 		dialog.ShowInformation("Export Room", "Room successfully exported to JSON!", e.window)
 	}, e.window)
