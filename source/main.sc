@@ -9,6 +9,9 @@ void game_add_rooms() {
 	if (!__room_add("tvscene", "assets/rooms/tvscene.json")) {
 		throw "adding the tvscene room failed";
 	}
+	if (!__room_set_current("tvscene")) {
+		throw "setting the game to tvscene failed";
+	}
 }
 
 void game_frame() {
