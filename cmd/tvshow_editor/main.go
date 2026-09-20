@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -25,6 +26,14 @@ import (
 	"golang.org/x/image/math/fixed"
 
 	"tvshow/game/editor"
+)
+
+type EditorTool string
+
+const (
+	ToolPlace     EditorTool = "place"
+	ToolBrush     EditorTool = "brush"
+	ToolSelection EditorTool = "selection"
 )
 
 type EditorApp struct {
@@ -56,6 +65,70 @@ type EditorApp struct {
 	paletteContainer       *fyne.Container
 	paletteButtons         map[string]*widget.Button
 	selectedPaletteTileIdx string
+
+	// Tool controls
+	activeTool EditorTool
+	toolSelect *widget.RadioGroup
+	lastBrushX int
+	lastBrushY int
+	isDragging bool
+
+	// Object dragging state
+	draggedObjLayerIdx int
+	draggedObjIdx      int
+
+	// Undo / Redo history
+	undoStack []*editor.Room
+	redoStack []*editor.Room
+}
+
+func cloneRoom(r *editor.Room) *editor.Room {
+	if r == nil {
+		return nil
+	}
+	data, err := editor.SaveRoomToBytes(r)
+	if err != nil {
+		return r
+	}
+	cloned, err := editor.LoadRoomFromBytes(data)
+	if err != nil {
+		return r
+	}
+	return cloned
+}
+
+func (e *EditorApp) recordUndo() {
+	snapshot := cloneRoom(e.room)
+	e.undoStack = append(e.undoStack, snapshot)
+	e.redoStack = nil
+}
+
+func (e *EditorApp) undo() {
+	if len(e.undoStack) == 0 {
+		e.statusLabel.SetText("Nothing to undo")
+		return
+	}
+	e.redoStack = append(e.redoStack, cloneRoom(e.room))
+	lastIdx := len(e.undoStack) - 1
+	e.room = e.undoStack[lastIdx]
+	e.undoStack = e.undoStack[:lastIdx]
+
+	e.refreshUI()
+	e.statusLabel.SetText("Undo performed")
+}
+
+func (e *EditorApp) redo() {
+	if len(e.redoStack) == 0 {
+		e.statusLabel.SetText("Nothing to redo")
+		return
+	}
+	e.undoStack = append(e.undoStack, cloneRoom(e.room))
+	lastIdx := len(e.redoStack) - 1
+	e.room = e.redoStack[lastIdx]
+	e.redoStack = e.redoStack[:lastIdx]
+
+	e.refreshUI()
+	e.statusLabel.SetText("Redo performed")
 }
 
 func newEditorApp() *EditorApp {
@@ -72,8 +145,13 @@ func newEditorAppWithApp(a fyne.App) *EditorApp {
 		fyneApp:         a,
 		window:          w,
 		baseDir:         pwd,
-		selectedObjIdx:  -1,
-		selectedTileIdx: -1,
+		selectedObjIdx:     -1,
+		selectedTileIdx:    -1,
+		activeTool:         ToolBrush,
+		lastBrushX:         -1,
+		lastBrushY:         -1,
+		draggedObjLayerIdx: -1,
+		draggedObjIdx:      -1,
 		room: &editor.Room{
 			Width:  640,
 			Height: 480,
@@ -160,7 +238,21 @@ func (e *EditorApp) buildUI() fyne.CanvasObject {
 		widget.NewToolbarAction(theme.FolderOpenIcon(), func() { e.openRoom() }),
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() { e.saveRoom() }),
 		widget.NewToolbarAction(theme.DownloadIcon(), func() { e.exportRoom() }),
+		widget.NewToolbarSeparator(),
+		widget.NewToolbarAction(theme.HistoryIcon(), func() { e.undo() }),
+		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() { e.redo() }),
 	)
+
+	// Register Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) keyboard shortcuts
+	undoShortcutCtrl := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierControl}
+	undoShortcutCmd := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierSuper}
+	redoShortcutCtrl := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift}
+	redoShortcutCmd := &desktop.CustomShortcut{KeyName: fyne.KeyZ, Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift}
+
+	e.window.Canvas().AddShortcut(undoShortcutCtrl, func(shortcut fyne.Shortcut) { e.undo() })
+	e.window.Canvas().AddShortcut(undoShortcutCmd, func(shortcut fyne.Shortcut) { e.undo() })
+	e.window.Canvas().AddShortcut(redoShortcutCtrl, func(shortcut fyne.Shortcut) { e.redo() })
+	e.window.Canvas().AddShortcut(redoShortcutCmd, func(shortcut fyne.Shortcut) { e.redo() })
 
 	mainContent := container.NewBorder(
 		toolbar,
@@ -264,6 +356,7 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 				Attributes:  attrs,
 				Coordinates: editor.Coordinates{X: x, Y: y},
 			}
+			e.recordUndo()
 			e.room.ObjectLayers[layerIdx].Objects = append(e.room.ObjectLayers[layerIdx].Objects, newObj)
 			e.refreshObjectList()
 		}, e.window)
@@ -282,6 +375,7 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 		if targetIdx < 0 || targetIdx >= len(objs) {
 			targetIdx = len(objs) - 1
 		}
+		e.recordUndo()
 		e.room.ObjectLayers[layerIdx].Objects = append(objs[:targetIdx], objs[targetIdx+1:]...)
 		e.selectedObjIdx = -1
 		e.refreshObjectList()
@@ -358,6 +452,20 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 		widget.NewFormItem("Attributes (comma-separated)", e.tsAttrEntry),
 	)
 
+	e.toolSelect = widget.NewRadioGroup([]string{"Brush Tool", "Selection Tool", "Place Tool"}, func(selected string) {
+		switch selected {
+		case "Brush Tool":
+			e.activeTool = ToolBrush
+		case "Selection Tool":
+			e.activeTool = ToolSelection
+		default:
+			e.activeTool = ToolPlace
+		}
+	})
+	e.toolSelect.SetSelected("Brush Tool")
+	e.toolSelect.Horizontal = true
+
+	toolsCard := widget.NewCard("Tileset Tools", "", e.toolSelect)
 	tsPropertiesCard := widget.NewCard("Tileset Layer Settings", "", container.NewVBox(tsForm, applyTsBtn))
 	paletteCard := widget.NewCard("Tile Set Palette", "Click a tile to select it for placing on room grid", e.paletteContainer)
 
@@ -415,6 +523,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 				y, _ := strconv.Atoi(yEntry.Text)
 				tile.Coordinates = &editor.Coordinates{X: x, Y: y}
 			}
+			e.recordUndo()
 			e.room.TilesetLayers[layerIdx].Tiles = append(e.room.TilesetLayers[layerIdx].Tiles, tile)
 			e.refreshTileList()
 			e.refreshPreview()
@@ -434,6 +543,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 		if targetIdx < 0 || targetIdx >= len(tiles) {
 			targetIdx = len(tiles) - 1
 		}
+		e.recordUndo()
 		e.room.TilesetLayers[layerIdx].Tiles = append(tiles[:targetIdx], tiles[targetIdx+1:]...)
 		e.selectedTileIdx = -1
 		e.refreshTileList()
@@ -443,7 +553,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 	tileControls := container.NewHBox(addTileBtn, deleteTileBtn)
 	tilesCard := widget.NewCard("Tiles", "", container.NewBorder(nil, tileControls, nil, nil, e.tileList))
 
-	topSection := container.NewVBox(layerHeader, tsPropertiesCard, paletteCard)
+	topSection := container.NewVBox(layerHeader, toolsCard, tsPropertiesCard, paletteCard)
 	return container.NewBorder(topSection, nil, nil, nil, tilesCard)
 }
 
@@ -652,11 +762,21 @@ func drawObjectLetter(img *image.RGBA, letter string, x, y int, clr color.RGBA) 
 
 type previewOverlay struct {
 	widget.BaseWidget
-	onTap func(pos fyne.Position, size fyne.Size)
+	onTap    func(pos fyne.Position, size fyne.Size)
+	onDrag   func(pos fyne.Position, size fyne.Size)
+	onDragEnd func()
 }
 
-func newPreviewOverlay(onTap func(pos fyne.Position, size fyne.Size)) *previewOverlay {
-	po := &previewOverlay{onTap: onTap}
+func newPreviewOverlay(
+	onTap func(pos fyne.Position, size fyne.Size),
+	onDrag func(pos fyne.Position, size fyne.Size),
+	onDragEnd func(),
+) *previewOverlay {
+	po := &previewOverlay{
+		onTap:     onTap,
+		onDrag:    onDrag,
+		onDragEnd: onDragEnd,
+	}
 	po.ExtendBaseWidget(po)
 	return po
 }
@@ -671,11 +791,23 @@ func (po *previewOverlay) Tapped(e *fyne.PointEvent) {
 	}
 }
 
-func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size) {
+func (po *previewOverlay) Dragged(e *fyne.DragEvent) {
+	if po.onDrag != nil {
+		po.onDrag(e.Position, po.Size())
+	}
+}
+
+func (po *previewOverlay) DragEnd() {
+	if po.onDragEnd != nil {
+		po.onDragEnd()
+	}
+}
+
+func (e *EditorApp) convertPosToRoomCoords(pos fyne.Position, containerSize fyne.Size) (roomX, roomY int, ok bool) {
 	roomW := e.room.Width
 	roomH := e.room.Height
 	if roomW <= 0 || roomH <= 0 || containerSize.Width <= 0 || containerSize.Height <= 0 {
-		return
+		return 0, 0, false
 	}
 
 	roomAspect := float64(roomW) / float64(roomH)
@@ -700,16 +832,156 @@ func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size)
 	relY := float64(pos.Y) - offsetY
 
 	if relX < 0 || relX >= renderW || relY < 0 || relY >= renderH {
+		return 0, 0, false
+	}
+
+	rx := int(relX * (float64(roomW) / renderW))
+	ry := int(relY * (float64(roomH) / renderH))
+	return rx, ry, true
+}
+
+func (e *EditorApp) findObjectAt(roomX, roomY int) (layerIdx int, objIdx int, found bool) {
+	for lIdx, layer := range e.room.ObjectLayers {
+		for oIdx, obj := range layer.Objects {
+			if roomX >= obj.Coordinates.X-8 && roomX <= obj.Coordinates.X+16 &&
+				roomY >= obj.Coordinates.Y-8 && roomY <= obj.Coordinates.Y+20 {
+				return lIdx, oIdx, true
+			}
+		}
+	}
+	return -1, -1, false
+}
+
+func (e *EditorApp) handlePreviewTap(pos fyne.Position, containerSize fyne.Size) {
+	roomX, roomY, ok := e.convertPosToRoomCoords(pos, containerSize)
+	if !ok {
 		return
 	}
 
-	roomX := int(relX * (float64(roomW) / renderW))
-	roomY := int(relY * (float64(roomH) / renderH))
+	lIdx, oIdx, foundObj := e.findObjectAt(roomX, roomY)
+	if foundObj {
+		if e.objLayerSelect != nil {
+			e.objLayerSelect.SetSelectedIndex(lIdx)
+		}
+		e.selectedObjIdx = oIdx
+		e.refreshObjectList()
+		if e.objList != nil {
+			e.objList.Select(oIdx)
+		}
+		obj := e.room.ObjectLayers[lIdx].Objects[oIdx]
+		e.statusLabel.SetText(fmt.Sprintf("Selected object type %q at (%d, %d)", obj.Type, obj.Coordinates.X, obj.Coordinates.Y))
+		return
+	}
 
-	e.placeTileAtRoomCoords(roomX, roomY)
+	if e.activeTool == ToolSelection {
+		e.selectTileAtRoomCoords(roomX, roomY)
+	} else {
+		e.placeTileAtRoomCoords(roomX, roomY)
+	}
+}
+
+func (e *EditorApp) handlePreviewDrag(pos fyne.Position, containerSize fyne.Size) {
+	roomX, roomY, ok := e.convertPosToRoomCoords(pos, containerSize)
+	if !ok {
+		return
+	}
+
+	if !e.isDragging {
+		lIdx, oIdx, foundObj := e.findObjectAt(roomX, roomY)
+		if foundObj {
+			e.draggedObjLayerIdx = lIdx
+			e.draggedObjIdx = oIdx
+			e.recordUndo()
+			e.isDragging = true
+		} else if e.activeTool == ToolBrush {
+			e.draggedObjLayerIdx = -1
+			e.draggedObjIdx = -1
+			e.recordUndo()
+			e.isDragging = true
+		}
+	}
+
+	if e.draggedObjLayerIdx >= 0 && e.draggedObjIdx >= 0 {
+		if e.draggedObjLayerIdx < len(e.room.ObjectLayers) && e.draggedObjIdx < len(e.room.ObjectLayers[e.draggedObjLayerIdx].Objects) {
+			obj := &e.room.ObjectLayers[e.draggedObjLayerIdx].Objects[e.draggedObjIdx]
+			obj.Coordinates = editor.Coordinates{X: roomX, Y: roomY}
+			e.statusLabel.SetText(fmt.Sprintf("Moving object %q to (%d, %d)", obj.Type, roomX, roomY))
+			e.refreshObjectList()
+			e.refreshPreview()
+		}
+	} else if e.activeTool == ToolBrush {
+		tileW := 16
+		tileH := 16
+		if e.tsLayerSelect != nil {
+			if idx := e.tsLayerSelect.SelectedIndex(); idx >= 0 && idx < len(e.room.TilesetLayers) {
+				if e.room.TilesetLayers[idx].TileWidth > 0 {
+					tileW = e.room.TilesetLayers[idx].TileWidth
+				}
+				if e.room.TilesetLayers[idx].TileHeight > 0 {
+					tileH = e.room.TilesetLayers[idx].TileHeight
+				}
+			}
+		}
+		gridX := (roomX / tileW) * tileW
+		gridY := (roomY / tileH) * tileH
+		if gridX != e.lastBrushX || gridY != e.lastBrushY {
+			e.lastBrushX = gridX
+			e.lastBrushY = gridY
+			e.placeTileAtRoomCoordsInternal(roomX, roomY, false)
+		}
+	}
+}
+
+func (e *EditorApp) handlePreviewDragEnd() {
+	e.isDragging = false
+	e.draggedObjLayerIdx = -1
+	e.draggedObjIdx = -1
+	e.lastBrushX = -1
+	e.lastBrushY = -1
+}
+
+func (e *EditorApp) selectTileAtRoomCoords(roomX, roomY int) {
+	if e.tsLayerSelect == nil {
+		return
+	}
+	layerIdx := e.tsLayerSelect.SelectedIndex()
+	if layerIdx < 0 || layerIdx >= len(e.room.TilesetLayers) {
+		return
+	}
+
+	layer := &e.room.TilesetLayers[layerIdx]
+	tileW := layer.TileWidth
+	tileH := layer.TileHeight
+	if tileW <= 0 || tileH <= 0 {
+		tileW = 16
+		tileH = 16
+	}
+
+	gridX := (roomX / tileW) * tileW
+	gridY := (roomY / tileH) * tileH
+
+	for i, tile := range layer.Tiles {
+		if tile.Coordinates != nil && tile.Coordinates.X == gridX && tile.Coordinates.Y == gridY {
+			e.selectedTileIdx = i
+			e.selectedPaletteTileIdx = tile.Index
+			e.updatePaletteHighlight()
+			e.refreshTileList()
+			if e.tileList != nil {
+				e.tileList.Select(i)
+			}
+			e.statusLabel.SetText(fmt.Sprintf("Selected tile #%s at (%d, %d)", tile.Index, gridX, gridY))
+			return
+		}
+	}
+
+	e.statusLabel.SetText(fmt.Sprintf("No tile found at grid (%d, %d)", gridX, gridY))
 }
 
 func (e *EditorApp) placeTileAtRoomCoords(roomX, roomY int) {
+	e.placeTileAtRoomCoordsInternal(roomX, roomY, true)
+}
+
+func (e *EditorApp) placeTileAtRoomCoordsInternal(roomX, roomY int, recordHistory bool) {
 	if e.tsLayerSelect == nil {
 		return
 	}
@@ -733,6 +1005,10 @@ func (e *EditorApp) placeTileAtRoomCoords(roomX, roomY int) {
 	tileIdxStr := e.selectedPaletteTileIdx
 	if tileIdxStr == "" {
 		tileIdxStr = "0"
+	}
+
+	if recordHistory {
+		e.recordUndo()
 	}
 
 	found := false
@@ -820,9 +1096,17 @@ func (e *EditorApp) refreshPreview() {
 	// Background rectangle
 	bg := canvas.NewRectangle(color.RGBA{R: 30, G: 30, B: 30, A: 255})
 
-	overlay := newPreviewOverlay(func(pos fyne.Position, size fyne.Size) {
-		e.handlePreviewTap(pos, size)
-	})
+	overlay := newPreviewOverlay(
+		func(pos fyne.Position, size fyne.Size) {
+			e.handlePreviewTap(pos, size)
+		},
+		func(pos fyne.Position, size fyne.Size) {
+			e.handlePreviewDrag(pos, size)
+		},
+		func() {
+			e.handlePreviewDragEnd()
+		},
+	)
 
 	e.previewContainer.Objects = []fyne.CanvasObject{
 		bg,
