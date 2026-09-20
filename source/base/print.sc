@@ -1,9 +1,9 @@
-#ifndef PRINT_SC
-#define PRINT_SC
+#ifndef BASE_PRINT_SC
+#define BASE_PRINT_SC
 
 #include "runtime/lifecycle.sc"
 #include "builtin.sc"
-#include "bool.sc"
+#include "base/bool.sc"
 
 //
 // Routine Description

@@ -1,5 +1,5 @@
-#ifndef BOOL_SC
-#define BOOL_SC
+#ifndef BASE_BOOL_SC
+#define BASE_BOOL_SC
 
 //
 // Routine Desscription
