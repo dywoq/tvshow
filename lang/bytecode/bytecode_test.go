@@ -239,6 +239,43 @@ func TestTranslateShortCircuitAndGlobals(t *testing.T) {
 	}
 }
 
+func TestTranslateDefer(t *testing.T) {
+	source := `
+		void calculate() { int result = 2 + 2; }
+		void start() {
+			defer calculate();
+		}`
+	program := translateSource(t, source)
+	if len(program.Functions) != 2 {
+		t.Fatalf("functions = %d, want 2", len(program.Functions))
+	}
+	startFn := program.Functions[1]
+	seenDefer := false
+	for _, ins := range startFn.Code {
+		if ins.Opcode == Defer {
+			seenDefer = true
+			if ins.Operand != 0 {
+				t.Errorf("defer operand = %v, want 0", ins.Operand)
+			}
+		}
+	}
+	if !seenDefer {
+		t.Errorf("missing Defer opcode in start function")
+	}
+
+	data, err := program.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+	decoded, err := DecodeProgram(data)
+	if err != nil {
+		t.Fatalf("DecodeProgram failed: %v", err)
+	}
+	if len(decoded.Functions) != 2 {
+		t.Fatalf("decoded functions = %d, want 2", len(decoded.Functions))
+	}
+}
+
 func TestTranslateExceptionOpcodes(t *testing.T) {
 	source := `
 		int Divide(int a, int b) {
