@@ -82,6 +82,13 @@ func GetCurrentRoom() (*Room, error) {
 	return rooms[currentRoom], nil
 }
 
+// GetCurrentRoomName returns an empty string or a current room name.
+func GetCurrentRoomName() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return currentRoom
+}
+
 func Painter(screen *ebiten.Image) {
 	room, err := GetCurrentRoom()
 	if err != nil {

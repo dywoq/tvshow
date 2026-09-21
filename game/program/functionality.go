@@ -127,6 +127,9 @@ func ProvideFunctionality() {
 		}
 		return false
 	})
+	interpret.RegisterFunction("__room_is_current", func(name string) bool {
+		return room.GetCurrentRoomName() == name 
+	})
 
 	// Keyboard functionality
 	interpret.RegisterFunction("__key_pressed", func(key string) bool {
