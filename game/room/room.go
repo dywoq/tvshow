@@ -6,8 +6,12 @@ import (
 	"os"
 	"sync"
 	"tvshow/game/editor"
+	"tvshow/game/font"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"golang.org/x/text/language"
+
+	ebiten_text "github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // Object represents a room object instance with its runtime state.
@@ -27,17 +31,30 @@ type Sprite struct {
 	Scale      int
 }
 
+// Text represents an independent text with its own font and position.
+type Text struct {
+	Name       string
+	Visible    bool
+	Content    string
+	X, Y       int
+	FaceSource *ebiten_text.GoTextFaceSource
+	Size       int
+	Language   language.Tag
+}
+
 // Room consists of the room's information.
 type Room struct {
 	Data    *editor.Room
 	Objects []*Object
 	Sprites []*Sprite
+	Texts   []*Text
 }
 
 var (
 	mu          sync.Mutex
 	rooms       = map[string]*Room{}
 	currentRoom = ""
+	currentFont *ebiten_text.GoTextFaceSource
 )
 
 // Add loads the room data into memory and saves it in the underlying map.
@@ -225,6 +242,30 @@ func AddSprite(name, filepath string, x, y int) error {
 	return nil
 }
 
+// AddText opens a text font at the provided filepath and parses it using
+// [font.GetFaceSource] method, and stores a [Text] instance in the current
+// room's texts slice.
+func AddText(name, content string, fontFilepath string, x, y, size int, l language.Tag) error {
+	r, ok := rooms[currentRoom]
+	if !ok || r == nil {
+		return fmt.Errorf("room %q does not exist", currentRoom)
+	}
+	faceSource, err := font.GetFaceSource(fontFilepath)
+	if err != nil {
+		return err
+	}
+	r.Texts = append(r.Texts, &Text{
+		Name:       name,
+		Content:    content,
+		X:          x,
+		Y:          y,
+		FaceSource: faceSource,
+		Size:       size,
+		Language:   l,
+	})
+	return nil
+}
+
 func Painter(screen *ebiten.Image) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -305,5 +346,20 @@ func Painter(screen *ebiten.Image) {
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(spr.X), float64(spr.Y))
 		screen.DrawImage(ebSprImg, op)
+	}
+
+	for _, text := range r.Texts {
+		if text == nil || len(text.Content) == 0 || !text.Visible {
+			continue
+		}
+		op := &ebiten_text.DrawOptions{}
+		op.GeoM.Translate(float64(text.X), float64(text.Y))
+		textFace := &ebiten_text.GoTextFace{
+			Source:    text.FaceSource,
+			Direction: 0,
+			Size:      float64(text.Size),
+			Language:  text.Language,
+		}
+		ebiten_text.Draw(screen, text.Content, textFace, op)
 	}
 }

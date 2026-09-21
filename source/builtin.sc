@@ -41,6 +41,7 @@ int __room_get_sprite_x(string name);
 int __room_get_sprite_y(string name);
 bool __room_sprite_scale(string name, int scale);
 int __room_sprite_get_scale(string name);
+bool __room_add_text(string name, string content, string font_path);
 
 //
 // KEYBOARD FUNCTIONALITY

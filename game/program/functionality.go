@@ -7,6 +7,8 @@ import (
 	"tvshow/game/audio"
 	"tvshow/game/keyboard"
 	"tvshow/game/room"
+
+	"golang.org/x/text/language"
 )
 
 // ProvideFunctionality registers and exposes a set of built-in APIs needed by the game program
@@ -221,6 +223,9 @@ func ProvideFunctionality() {
 			}
 		}
 		return -1
+	})
+	interpret.RegisterFunction("__room_add_text", func(name, content, fontPath string) bool {
+		return room.AddText(name, content, fontPath, 0, 0, 16, language.English) == nil
 	})
 
 	// Keyboard functionality
