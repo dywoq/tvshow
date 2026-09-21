@@ -2,6 +2,7 @@ package room
 
 import (
 	"fmt"
+	"image"
 	"sync"
 	"tvshow/game/editor"
 
@@ -14,10 +15,19 @@ type Object struct {
 	CurrentSubSpriteIndex int
 }
 
+// Sprite represents a room independent sprite that does not belong to an object.
+type Sprite struct {
+	SpritePath string
+	Image      image.Image
+	X          int
+	Y          int
+}
+
 // Room consists of the room's information.
 type Room struct {
 	Data    *editor.Room
 	Objects []*Object
+	Sprites []*Sprite
 }
 
 var (
@@ -57,6 +67,7 @@ func SetCurrentRoom(name string) error {
 
 	// Gather all objects from all object layers into r.Objects
 	r.Objects = nil
+	r.Sprites = []*Sprite{}
 	if r.Data != nil {
 		for i := range r.Data.ObjectLayers {
 			for j := range r.Data.ObjectLayers[i].Objects {
@@ -116,5 +127,17 @@ func Painter(screen *ebiten.Image) {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(obj.Data.Coordinates.X), float64(obj.Data.Coordinates.Y))
 		screen.DrawImage(ebiten.NewImageFromImage(subImg), op)
+	}
+
+	for _, spr := range room.Sprites {
+		if spr.Image == nil {
+			continue
+		}
+		if len(spr.SpritePath) == 0 {
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(spr.X), float64(spr.Y))
+		screen.DrawImage(ebiten.NewImageFromImage(spr.Image), op)
 	}
 }
