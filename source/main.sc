@@ -2,6 +2,7 @@
 #include "base/alarm.sc"
 #include "builtin.sc"
 #include "container/vector.sc"
+#include "audio/manager.sc"
 
 internal bool game_initialized = false;
 
@@ -14,18 +15,14 @@ internal void game_add_rooms() {
 	}
 }
 
-internal void game_add_audio() {
-	if (!__audio_ogg_init("main_music", "assets/audio/test.ogg")) {
-		throw "failed to init assets/audio/test.ogg";
-	}
-}
+bool audio_played = false;
 
 void game_frame() {
 	alarm_update();
+	audio_update();
 	if (!game_initialized) {
 		try {
 			game_add_rooms();
-			game_add_audio();
 			game_initialized = true;
 		} catch (string exception) {
 			error("Game failed to initialize: " + exception, true);
