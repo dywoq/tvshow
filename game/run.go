@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"tvshow/game/audio"
 	"tvshow/game/core"
 	"tvshow/game/program"
 	"tvshow/game/room"
@@ -19,6 +20,7 @@ func Run() error {
 		},
 		Initializers: []core.Initializer{
 			program.Initializer,
+			audio.Initializer,
 		},
 		Painters: []core.Painter{
 			room.Painter,

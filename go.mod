@@ -17,6 +17,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
+	github.com/ebitengine/oto/v3 v3.5.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
@@ -32,6 +33,7 @@ require (
 	github.com/hack-pad/safejs v0.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
+	github.com/jfreymuth/pulse v0.1.3 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
