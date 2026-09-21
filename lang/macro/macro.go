@@ -75,6 +75,13 @@ func (e *Expander) Expand(input []token.Token) ([]token.Token, error) {
 	if len(input) > 0 {
 		pos = input[len(input)-1].Pos
 	}
+	for i := range out {
+		if out[i].Type == token.INTERNAL && out[i].Pos.Filename == "" {
+			if len(input) > 0 {
+				out[i].Pos.Filename = input[0].Pos.Filename
+			}
+		}
+	}
 	return append(out, token.Token{Type: token.EOF, Pos: pos}), nil
 }
 
@@ -383,7 +390,11 @@ func (e *Expander) substitute(m Macro, args [][]token.Token, disabled map[string
 		if v, ok := exp[t.Literal]; ok {
 			r = append(r, v...)
 		} else {
+			origFilename := t.Pos.Filename
 			t.Pos = pos
+			if origFilename != "" {
+				t.Pos.Filename = origFilename
+			}
 			r = append(r, t)
 		}
 	}

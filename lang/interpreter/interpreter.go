@@ -64,8 +64,23 @@ func cellAddress(c *cell) address {
 	return address{get: func() any { return c.value }, set: func(v any) { c.value = v }}
 }
 
-type functionRef struct{ name string }
-type frame struct{ vars map[string]*cell }
+type functionRef struct {
+	name   string
+	parent *frame
+}
+type frame struct {
+	vars   map[string]*cell
+	parent *frame
+}
+
+func (f *frame) lookupCell(name string) *cell {
+	for cur := f; cur != nil; cur = cur.parent {
+		if c, ok := cur.vars[name]; ok {
+			return c
+		}
+	}
+	return nil
+}
 
 type catchHandler struct {
 	targetPC   int
@@ -275,7 +290,7 @@ func (i *Interpreter) Run(name string, args ...any) (any, error) {
 		}
 		i.initialized = true
 	}
-	res, err := i.call(functionRef{name}, args)
+	res, err := i.call(functionRef{name: name}, args)
 	if err != nil {
 		return nil, i.handleUncaughtError(err)
 	}
@@ -357,15 +372,15 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			if !ok {
 				return fail("load requires a variable name")
 			}
-			if c, ok := local.vars[name]; ok && c.value != nil {
+			if c := local.lookupCell(name); c != nil && c.value != nil {
 				stack = append(stack, c.value)
 			} else if c, ok := i.globals.vars[name]; ok && c.value != nil {
 				stack = append(stack, c.value)
 			} else if _, ok := i.functions[name]; ok {
-				stack = append(stack, functionRef{name})
+				stack = append(stack, functionRef{name: name, parent: local})
 			} else if _, ok := i.host[name]; ok {
-				stack = append(stack, functionRef{name})
-			} else if c, ok := local.vars[name]; ok {
+				stack = append(stack, functionRef{name: name})
+			} else if c := local.lookupCell(name); c != nil {
 				stack = append(stack, c.value)
 			} else if c, ok := i.globals.vars[name]; ok {
 				stack = append(stack, c.value)
@@ -377,14 +392,14 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			if !ok {
 				return fail("address requires a variable name")
 			}
-			if c, ok := local.vars[name]; ok {
+			if c := local.lookupCell(name); c != nil {
 				stack = append(stack, cellAddress(c))
 			} else if c, ok := i.globals.vars[name]; ok {
 				stack = append(stack, cellAddress(c))
 			} else if _, ok := i.functions[name]; ok {
-				stack = append(stack, functionRef{name})
+				stack = append(stack, functionRef{name: name, parent: local})
 			} else if _, ok := i.host[name]; ok {
-				stack = append(stack, functionRef{name})
+				stack = append(stack, functionRef{name: name})
 			} else {
 				return fail("undefined name " + name)
 			}
@@ -506,9 +521,9 @@ func (i *Interpreter) executeFunc(funcName string, code []bytecode.Instruction, 
 			case func([]any) (any, error):
 				v, e = fn(argv)
 			case string:
-				v, e = i.call(functionRef{fn}, argv)
+				v, e = i.call(functionRef{name: fn}, argv)
 			case bytecode.Function:
-				v, e = i.call(functionRef{fn.Name}, argv)
+				v, e = i.call(functionRef{name: fn.Name}, argv)
 			default:
 				if target != nil && reflect.ValueOf(target).Kind() == reflect.Func {
 					if wf, err := WrapFuncWithInterpreter(i, target); err == nil {
@@ -745,7 +760,7 @@ func (i *Interpreter) call(ref functionRef, args []any) (any, error) {
 	if len(args) != len(f.Parameters) {
 		return nil, Error{Message: fmt.Sprintf("%s expects %d arguments, got %d", ref.name, len(f.Parameters), len(args))}
 	}
-	local := &frame{vars: map[string]*cell{}}
+	local := &frame{vars: map[string]*cell{}, parent: ref.parent}
 	for n, v := range args {
 		local.vars[f.Parameters[n]] = &cell{v}
 	}
@@ -771,11 +786,11 @@ func (i *Interpreter) ToFunction(v any) (Function, error) {
 		}, nil
 	case string:
 		return func(args []any) (any, error) {
-			return i.call(functionRef{f}, args)
+			return i.call(functionRef{name: f}, args)
 		}, nil
 	case bytecode.Function:
 		return func(args []any) (any, error) {
-			return i.call(functionRef{f.Name}, args)
+			return i.call(functionRef{name: f.Name}, args)
 		}, nil
 	default:
 		if reflect.ValueOf(v).Kind() == reflect.Func {

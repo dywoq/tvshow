@@ -159,7 +159,7 @@ func isQualifier(k token.TokenType) bool {
 	return k == token.CONST
 }
 func isStorage(k token.TokenType) bool {
-	return k == token.TYPEDEF || k == token.AUTO
+	return k == token.TYPEDEF || k == token.AUTO || k == token.INTERNAL
 }
 func isBuiltin(k token.TokenType) bool {
 	return k == token.AUTO || k == token.VOID || k == token.CHAR_KW || k == token.SHORT || k == token.INT_KW || k == token.LONG || k == token.FLOAT_KW || k == token.DOUBLE || k == token.SIGNED || k == token.UNSIGNED || k == token.BOOL || k == token.COMPLEX || k == token.IMAGINARY || k == token.STRING_KW
@@ -643,7 +643,144 @@ func (p *Parser) expr(min int) (Expression, error) {
 	}
 	return left, nil
 }
+func (p *Parser) parseParameterList() ([]Parameter, error) {
+	if _, e := p.expect(token.LPAREN); e != nil {
+		return nil, e
+	}
+	var params []Parameter
+	if p.cur().Type != token.RPAREN {
+		for {
+			if _, ok := p.accept(token.ELLIPSIS); ok {
+				break
+			}
+			ss, e := p.parseSpecs()
+			if e != nil {
+				return nil, e
+			}
+			pd, e := p.parseDeclarator()
+			if e != nil {
+				return nil, e
+			}
+			params = append(params, Parameter{ss, pd})
+			if _, ok := p.accept(token.COMMA); !ok {
+				break
+			}
+		}
+	}
+	if _, e := p.expect(token.RPAREN); e != nil {
+		return nil, e
+	}
+	return params, nil
+}
+
+func (p *Parser) tryParseLambda(startI int) (*LambdaExpr, bool) {
+	savedI := p.i
+	p.i = startI
+
+	specs, err := p.parseSpecs()
+	if err != nil {
+		p.i = savedI
+		return nil, false
+	}
+
+	var decl Declarator
+	if p.cur().Type == token.ASTERISK {
+		d, err := p.parseDeclarator()
+		if err != nil {
+			p.i = savedI
+			return nil, false
+		}
+		decl = d
+	}
+
+	if p.cur().Type != token.LPAREN {
+		p.i = savedI
+		return nil, false
+	}
+
+	params, err := p.parseParameterList()
+	if err != nil {
+		p.i = savedI
+		return nil, false
+	}
+
+	if p.cur().Type != token.LBRACE {
+		p.i = savedI
+		return nil, false
+	}
+
+	body, err := p.parseBlock()
+	if err != nil {
+		p.i = savedI
+		return nil, false
+	}
+
+	return &LambdaExpr{
+		ReturnType: specs,
+		Declarator: decl,
+		Parameters: params,
+		Body:       body,
+	}, true
+}
+
 func (p *Parser) prefix() (Expression, error) {
+	startI := p.i
+	if lambda, ok := p.tryParseLambda(startI); ok {
+		x := Expression(lambda)
+		for {
+			op := p.cur()
+			if op.Type == token.LPAREN {
+				p.next()
+				c := &CallExpr{Function: x, Open: op}
+				if p.cur().Type != token.RPAREN {
+					for {
+						a, e := p.expr(2)
+						if e != nil {
+							return nil, e
+						}
+						c.Arguments = append(c.Arguments, a)
+						if _, ok := p.accept(token.COMMA); !ok {
+							break
+						}
+					}
+				}
+				if _, e := p.expect(token.RPAREN); e != nil {
+					return nil, e
+				}
+				x = c
+				continue
+			}
+			if op.Type == token.LBRACK {
+				p.next()
+				i, e := p.expr(1)
+				if e != nil {
+					return nil, e
+				}
+				if _, e = p.expect(token.RBRACK); e != nil {
+					return nil, e
+				}
+				x = &IndexExpr{x, op, i}
+				continue
+			}
+			if op.Type == token.DOT || op.Type == token.ARROW {
+				p.next()
+				m, e := p.expect(token.IDENT)
+				if e != nil {
+					return nil, e
+				}
+				x = &MemberExpr{x, op, m}
+				continue
+			}
+			if op.Type == token.INCREMENT || op.Type == token.DECREMENT {
+				p.next()
+				x = &UnaryExpr{Operator: op, Operand: x, Postfix: true}
+				continue
+			}
+			break
+		}
+		return x, nil
+	}
+
 	t := p.next()
 	var x Expression
 	switch t.Type {

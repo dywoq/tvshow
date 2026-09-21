@@ -760,6 +760,76 @@ func TestRunDeferFeature(t *testing.T) {
 	}
 }
 
+func TestRunLambdaExpressionsAndClosures(t *testing.T) {
+	// Prompt example
+	sourcePrompt := `
+		int start() {
+			int result = 2 * 2;
+			auto lambda = int(int given_result) {
+				return given_result * 2;
+			};
+			return lambda(result);
+		}`
+	prog1 := programFromSource(t, sourcePrompt)
+	got1, err := New(prog1).Run("start")
+	if err != nil {
+		t.Fatalf("Run prompt lambda example: %v", err)
+	}
+	if got1 != int64(8) {
+		t.Errorf("start() = %v, want 8", got1)
+	}
+
+	// Closure capturing and modifying parent local variables
+	sourceClosure := `
+		int start() {
+			int factor = 10;
+			int counter = 0;
+			auto mult = int(int x) {
+				counter++;
+				return x * factor;
+			};
+			int res1 = mult(2);
+			factor = 20;
+			int res2 = mult(3);
+			return res1 + res2 + counter; // (2*10) + (3*20) + 2 = 20 + 60 + 2 = 82
+		}`
+	prog2 := programFromSource(t, sourceClosure)
+	got2, err := New(prog2).Run("start")
+	if err != nil {
+		t.Fatalf("Run closure lambda example: %v", err)
+	}
+	if got2 != int64(82) {
+		t.Errorf("start() = %v, want 82", got2)
+	}
+
+	// Lambda with function type alias and passing lambda to host function
+	sourceHost := `
+		typedef int (*BinOp)(int, int);
+		int apply_op(BinOp op, int a, int b) {
+			return op(a, b);
+		}
+		int call_host(auto host_fn, int a, int b);
+		int start() {
+			int offset = 5;
+			BinOp add = int(int x, int y) { return x + y + offset; };
+			int res1 = apply_op(add, 10, 20); // 10 + 20 + 5 = 35
+			int res2 = call_host(add, 1, 2);  // 1 + 2 + 5 = 8
+			return res1 + res2;               // 43
+		}`
+	prog3 := programFromSource(t, sourceHost)
+	vm3 := New(prog3)
+	vm3.RegisterFunction("call_host", func(op func(int, int) int, a, b int) int {
+		return op(a, b)
+	})
+	got3, err := vm3.Run("start")
+	if err != nil {
+		t.Fatalf("Run lambda with host interop: %v", err)
+	}
+	if got3 != int64(43) {
+		t.Errorf("start() = %v, want 43", got3)
+	}
+}
+
 func TestRunStringify(t *testing.T) {
 	source := `
 		typedef struct Point {

@@ -491,7 +491,10 @@ func Translate(program *parser.Program) (*Program, error) { return New().Transla
 
 // Translator owns translation state. Create a new Translator for every
 // translation unit.
-type Translator struct{ next int }
+type Translator struct {
+	next           int
+	extraFunctions []Function
+}
 
 func New() *Translator { return &Translator{} }
 
@@ -532,6 +535,7 @@ func (t *Translator) Translate(ast *parser.Program) (*Program, error) {
 			out.Functions = append(out.Functions, Function{Name: d.Declarator.Name.Literal, Parameters: params, Code: c.code})
 		}
 	}
+	out.Functions = append(out.Functions, t.extraFunctions...)
 	return out, nil
 }
 
@@ -1186,6 +1190,32 @@ func (c *compiler) expr(e parser.Expression) error {
 		return c.compoundLiteral(e)
 	case *parser.InitializerListExpr:
 		return c.initializerList(e, nil, 0, e.Position())
+	case *parser.LambdaExpr:
+		funcName := c.name("lambda")
+		var params []string
+		for _, p := range e.Parameters {
+			if p.Declarator.Name.Literal != "" {
+				params = append(params, p.Declarator.Name.Literal)
+			}
+		}
+		lambdaComp := compiler{t: c.t, structFields: c.structFields, labels: map[string]int{}}
+		if err := lambdaComp.block(e.Body); err != nil {
+			return err
+		}
+		closePos := e.Position()
+		if e.Body != nil {
+			closePos = e.Body.Close.Pos
+		}
+		lambdaComp.emit(Return, nil, closePos)
+		if err := lambdaComp.resolve(); err != nil {
+			return err
+		}
+		c.t.extraFunctions = append(c.t.extraFunctions, Function{
+			Name:       funcName,
+			Parameters: params,
+			Code:       lambdaComp.code,
+		})
+		c.emit(Load, funcName, e.Position())
 	default:
 		return Error{e.Position(), fmt.Sprintf("%T is not supported by the bytecode translator", e)}
 	}

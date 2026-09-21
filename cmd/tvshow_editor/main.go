@@ -420,6 +420,10 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 		}, e.window)
 	})
 
+	editObjBtn := widget.NewButton("Edit Selected Object", func() {
+		e.editSelectedObjectDialog()
+	})
+
 	deleteObjBtn := widget.NewButton("Delete Selected Object", func() {
 		layerIdx := e.objLayerSelect.SelectedIndex()
 		if layerIdx < 0 || layerIdx >= len(e.room.ObjectLayers) {
@@ -437,11 +441,112 @@ func (e *EditorApp) buildObjectLayersTab() fyne.CanvasObject {
 		e.room.ObjectLayers[layerIdx].Objects = append(objs[:targetIdx], objs[targetIdx+1:]...)
 		e.selectedObjIdx = -1
 		e.refreshObjectList()
+		e.refreshPreview()
 	})
 
-	objControls := container.NewHBox(addObjBtn, deleteObjBtn)
+	objControls := container.NewHBox(addObjBtn, editObjBtn, deleteObjBtn)
 
 	return container.NewBorder(layerHeader, objControls, nil, nil, e.objList)
+}
+
+func (e *EditorApp) editSelectedObjectDialog() {
+	layerIdx := e.objLayerSelect.SelectedIndex()
+	if layerIdx < 0 || layerIdx >= len(e.room.ObjectLayers) {
+		dialog.ShowError(fmt.Errorf("select an object layer first"), e.window)
+		return
+	}
+	objs := e.room.ObjectLayers[layerIdx].Objects
+	if len(objs) == 0 {
+		dialog.ShowError(fmt.Errorf("no objects in selected layer"), e.window)
+		return
+	}
+	targetIdx := e.selectedObjIdx
+	if targetIdx < 0 || targetIdx >= len(objs) {
+		targetIdx = len(objs) - 1
+	}
+
+	currObj := objs[targetIdx]
+
+	typeEntry := widget.NewEntry()
+	typeEntry.SetText(currObj.Type)
+	wEntry := widget.NewEntry()
+	wEntry.SetText(strconv.Itoa(currObj.Width))
+	hEntry := widget.NewEntry()
+	hEntry.SetText(strconv.Itoa(currObj.Height))
+	attrsEntry := widget.NewEntry()
+	attrsEntry.SetText(strings.Join(currObj.Attributes, ", "))
+	xEntry := widget.NewEntry()
+	xEntry.SetText(strconv.Itoa(currObj.Coordinates.X))
+	yEntry := widget.NewEntry()
+	yEntry.SetText(strconv.Itoa(currObj.Coordinates.Y))
+	spriteSheetEntry := widget.NewEntry()
+	spriteSheetEntry.SetText(currObj.SpriteSheet)
+	subWEntry := widget.NewEntry()
+	if currObj.SubSpriteWidth > 0 {
+		subWEntry.SetText(strconv.Itoa(currObj.SubSpriteWidth))
+	}
+	subHEntry := widget.NewEntry()
+	if currObj.SubSpriteHeight > 0 {
+		subHEntry.SetText(strconv.Itoa(currObj.SubSpriteHeight))
+	}
+
+	form := widget.NewForm(
+		widget.NewFormItem("Type", typeEntry),
+		widget.NewFormItem("Width", wEntry),
+		widget.NewFormItem("Height", hEntry),
+		widget.NewFormItem("Attributes (comma-separated)", attrsEntry),
+		widget.NewFormItem("X", xEntry),
+		widget.NewFormItem("Y", yEntry),
+		widget.NewFormItem("Sprite Sheet Path (optional)", spriteSheetEntry),
+		widget.NewFormItem("Sub-Sprite Width (optional)", subWEntry),
+		widget.NewFormItem("Sub-Sprite Height (optional)", subHEntry),
+	)
+
+	dialog.ShowCustomConfirm("Edit Object", "Save", "Cancel", form, func(ok bool) {
+		if !ok {
+			return
+		}
+		x, _ := strconv.Atoi(xEntry.Text)
+		y, _ := strconv.Atoi(yEntry.Text)
+		w, _ := strconv.Atoi(wEntry.Text)
+		h, _ := strconv.Atoi(hEntry.Text)
+		subW, _ := strconv.Atoi(subWEntry.Text)
+		subH, _ := strconv.Atoi(subHEntry.Text)
+		var attrs []string
+		if attrsEntry.Text != "" {
+			for _, a := range strings.Split(attrsEntry.Text, ",") {
+				if trimmed := strings.TrimSpace(a); trimmed != "" {
+					attrs = append(attrs, trimmed)
+				}
+			}
+		}
+
+		editedObj := editor.Object{
+			Type:            typeEntry.Text,
+			Width:           w,
+			Height:          h,
+			Attributes:      attrs,
+			Coordinates:     editor.Coordinates{X: x, Y: y},
+			SpriteSheet:     spriteSheetEntry.Text,
+			SubSpriteWidth:  subW,
+			SubSpriteHeight: subH,
+		}
+
+		if editedObj.SpriteSheet != "" {
+			if err := editor.ProcessObjectSpriteSheet(&editedObj, e.baseDir); err != nil {
+				dialog.ShowError(fmt.Errorf("failed to process sprite sheet: %w", err), e.window)
+			}
+		}
+
+		e.recordUndo()
+		if err := e.room.ObjectLayers[layerIdx].EditObject(targetIdx, editedObj); err != nil {
+			dialog.ShowError(err, e.window)
+			return
+		}
+		e.statusLabel.SetText(fmt.Sprintf("Edited object #%d (%s)", targetIdx, editedObj.Type))
+		e.refreshObjectList()
+		e.refreshPreview()
+	}, e.window)
 }
 
 func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
@@ -588,6 +693,10 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 		}, e.window)
 	})
 
+	editTileBtn := widget.NewButton("Edit Selected Tile", func() {
+		e.editSelectedTileDialog()
+	})
+
 	deleteTileBtn := widget.NewButton("Delete Selected Tile", func() {
 		layerIdx := e.tsLayerSelect.SelectedIndex()
 		if layerIdx < 0 || layerIdx >= len(e.room.TilesetLayers) {
@@ -608,7 +717,7 @@ func (e *EditorApp) buildTilesetLayersTab() fyne.CanvasObject {
 		e.refreshPreview()
 	})
 
-	tileControls := container.NewHBox(addTileBtn, deleteTileBtn)
+	tileControls := container.NewHBox(addTileBtn, editTileBtn, deleteTileBtn)
 	tilesCard := widget.NewCard("Tiles", "", container.NewBorder(nil, tileControls, nil, nil, e.tileList))
 
 	topSection := container.NewVBox(layerHeader, toolsCard, tsPropertiesCard, paletteCard)
@@ -1307,8 +1416,88 @@ func (e *EditorApp) snapSelectedTilesToGrid() {
 	}
 }
 
+func (e *EditorApp) editSelectedTileDialog() {
+	layerIdx := e.tsLayerSelect.SelectedIndex()
+	if layerIdx < 0 || layerIdx >= len(e.room.TilesetLayers) {
+		dialog.ShowError(fmt.Errorf("select a tileset layer first"), e.window)
+		return
+	}
+	tiles := e.room.TilesetLayers[layerIdx].Tiles
+	if len(tiles) == 0 {
+		dialog.ShowError(fmt.Errorf("no tiles in selected layer"), e.window)
+		return
+	}
+	targetIdx := e.selectedTileIdx
+	if targetIdx < 0 || targetIdx >= len(tiles) {
+		targetIdx = len(tiles) - 1
+	}
+
+	currTile := tiles[targetIdx]
+
+	idxEntry := widget.NewEntry()
+	idxEntry.SetText(currTile.Index)
+	xEntry := widget.NewEntry()
+	yEntry := widget.NewEntry()
+	if currTile.Coordinates != nil {
+		xEntry.SetText(strconv.Itoa(currTile.Coordinates.X))
+		yEntry.SetText(strconv.Itoa(currTile.Coordinates.Y))
+	}
+
+	form := widget.NewForm(
+		widget.NewFormItem("Tile Index in Asset", idxEntry),
+		widget.NewFormItem("X (optional, empty for auto)", xEntry),
+		widget.NewFormItem("Y (optional, empty for auto)", yEntry),
+	)
+
+	dialog.ShowCustomConfirm("Edit Tile", "Save", "Cancel", form, func(ok bool) {
+		if !ok {
+			return
+		}
+		editedTile := editor.Tile{Index: idxEntry.Text}
+		if xEntry.Text != "" && yEntry.Text != "" {
+			x, _ := strconv.Atoi(xEntry.Text)
+			y, _ := strconv.Atoi(yEntry.Text)
+			editedTile.Coordinates = &editor.Coordinates{X: x, Y: y}
+		}
+		e.recordUndo()
+		if err := e.room.TilesetLayers[layerIdx].EditTile(targetIdx, editedTile); err != nil {
+			dialog.ShowError(err, e.window)
+			return
+		}
+		e.statusLabel.SetText(fmt.Sprintf("Edited tile #%d (index: %s)", targetIdx, editedTile.Index))
+		e.refreshTileList()
+		e.refreshPreview()
+	}, e.window)
+}
+
 func (e *EditorApp) handlePreviewSecondaryTap(pos fyne.Position, containerSize fyne.Size) {
-	menuItems := []*fyne.MenuItem{
+	var menuItems []*fyne.MenuItem
+
+	roomX, roomY, ok := e.convertPosToRoomCoords(pos, containerSize)
+	if ok {
+		lIdx, oIdx, foundObj := e.findObjectAt(roomX, roomY)
+		if foundObj {
+			menuItems = append(menuItems, fyne.NewMenuItem("Edit Object at Click", func() {
+				if e.objLayerSelect != nil {
+					e.objLayerSelect.SetSelectedIndex(lIdx)
+				}
+				e.selectedObjIdx = oIdx
+				e.refreshObjectList()
+				if e.objList != nil {
+					e.objList.Select(oIdx)
+				}
+				e.editSelectedObjectDialog()
+			}))
+		}
+	}
+
+	menuItems = append(menuItems,
+		fyne.NewMenuItem("Edit Selected Object", func() {
+			e.editSelectedObjectDialog()
+		}),
+		fyne.NewMenuItem("Edit Selected Tile", func() {
+			e.editSelectedTileDialog()
+		}),
 		fyne.NewMenuItem("Delete Selected Items", func() {
 			e.deleteSelectedItems()
 		}),
@@ -1334,7 +1523,7 @@ func (e *EditorApp) handlePreviewSecondaryTap(pos fyne.Position, containerSize f
 		fyne.NewMenuItem("Redo", func() {
 			e.redo()
 		}),
-	}
+	)
 
 	menu := fyne.NewMenu("Actions", menuItems...)
 	popUp := widget.NewPopUpMenu(menu, e.window.Canvas())

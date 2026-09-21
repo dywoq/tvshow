@@ -225,3 +225,93 @@ func TestObjectSpriteSheetIntegration(t *testing.T) {
 		t.Fatalf("expected objList to be non-nil")
 	}
 }
+
+func TestEditObjectAndTileUI(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	app := newEditorAppWithApp(a)
+
+	app.room = &editor.Room{
+		Width:  640,
+		Height: 480,
+		ObjectLayers: []editor.ObjectLayer{
+			{
+				Name: "ObjLayer",
+				Objects: []editor.Object{
+					{Type: "Player", Width: 16, Height: 16, Coordinates: editor.Coordinates{X: 20, Y: 20}},
+				},
+			},
+		},
+		TilesetLayers: []editor.TilesetLayer{
+			{
+				Name:        "TSLayer",
+				TilesetPath: "",
+				TileWidth:   16,
+				TileHeight:  16,
+				Tiles: []editor.Tile{
+					{Index: "0", Coordinates: &editor.Coordinates{X: 32, Y: 32}},
+				},
+			},
+		},
+	}
+
+	app.buildUI()
+
+	// 1. Edit Object via layer EditObject
+	app.recordUndo()
+	newObj := editor.Object{
+		Type:        "Boss",
+		Width:       32,
+		Height:      32,
+		Attributes:  []string{"hostile"},
+		Coordinates: editor.Coordinates{X: 50, Y: 50},
+	}
+	if err := app.room.ObjectLayers[0].EditObject(0, newObj); err != nil {
+		t.Fatalf("EditObject failed: %v", err)
+	}
+	app.refreshObjectList()
+	app.refreshPreview()
+
+	if app.room.ObjectLayers[0].Objects[0].Type != "Boss" {
+		t.Errorf("expected object type 'Boss', got %q", app.room.ObjectLayers[0].Objects[0].Type)
+	}
+
+	// Test Undo / Redo for Object Edit
+	app.undo()
+	if app.room.ObjectLayers[0].Objects[0].Type != "Player" {
+		t.Errorf("expected object type restored to 'Player' after undo, got %q", app.room.ObjectLayers[0].Objects[0].Type)
+	}
+
+	app.redo()
+	if app.room.ObjectLayers[0].Objects[0].Type != "Boss" {
+		t.Errorf("expected object type 'Boss' after redo, got %q", app.room.ObjectLayers[0].Objects[0].Type)
+	}
+
+	// 2. Edit Tile via layer EditTile
+	app.recordUndo()
+	newTile := editor.Tile{
+		Index:       "3",
+		Coordinates: &editor.Coordinates{X: 64, Y: 64},
+	}
+	if err := app.room.TilesetLayers[0].EditTile(0, newTile); err != nil {
+		t.Fatalf("EditTile failed: %v", err)
+	}
+	app.refreshTileList()
+	app.refreshPreview()
+
+	if app.room.TilesetLayers[0].Tiles[0].Index != "3" {
+		t.Errorf("expected tile index '3', got %q", app.room.TilesetLayers[0].Tiles[0].Index)
+	}
+
+	// Test Undo / Redo for Tile Edit
+	app.undo()
+	if app.room.TilesetLayers[0].Tiles[0].Index != "0" {
+		t.Errorf("expected tile index restored to '0' after undo, got %q", app.room.TilesetLayers[0].Tiles[0].Index)
+	}
+
+	app.redo()
+	if app.room.TilesetLayers[0].Tiles[0].Index != "3" {
+		t.Errorf("expected tile index '3' after redo, got %q", app.room.TilesetLayers[0].Tiles[0].Index)
+	}
+}
