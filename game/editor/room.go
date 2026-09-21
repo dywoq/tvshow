@@ -45,6 +45,15 @@ type ObjectLayer struct {
 	Objects    []Object `json:"objects,omitempty"`
 }
 
+// EditObject updates the object at index with newObj.
+func (l *ObjectLayer) EditObject(index int, newObj Object) error {
+	if index < 0 || index >= len(l.Objects) {
+		return fmt.Errorf("object index %d out of bounds", index)
+	}
+	l.Objects[index] = newObj
+	return nil
+}
+
 // Tile represents a tile within a tileset layer.
 type Tile struct {
 	Index       string       `json:"index"`
@@ -59,6 +68,15 @@ type TilesetLayer struct {
 	TileWidth   int      `json:"tile_width"`
 	TileHeight  int      `json:"tile_height"`
 	Tiles       []Tile   `json:"tiles"`
+}
+
+// EditTile updates the tile at index with newTile.
+func (l *TilesetLayer) EditTile(index int, newTile Tile) error {
+	if index < 0 || index >= len(l.Tiles) {
+		return fmt.Errorf("tile index %d out of bounds", index)
+	}
+	l.Tiles[index] = newTile
+	return nil
 }
 
 // Room represents the room JSON structure.

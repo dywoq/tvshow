@@ -326,3 +326,50 @@ func TestObjectWidthAndHeight(t *testing.T) {
 		t.Errorf("Expected object width and height 32x32, got %dx%d", obj.Width, obj.Height)
 	}
 }
+
+func TestEditObjectAndTile(t *testing.T) {
+	objLayer := ObjectLayer{
+		Objects: []Object{
+			{Type: "chest", Width: 16, Height: 16, Coordinates: Coordinates{X: 10, Y: 10}},
+		},
+	}
+
+	err := objLayer.EditObject(0, Object{
+		Type:        "chest_opened",
+		Width:       20,
+		Height:      20,
+		Coordinates: Coordinates{X: 15, Y: 15},
+		Attributes:  []string{"open", "looted"},
+	})
+	if err != nil {
+		t.Fatalf("EditObject failed: %v", err)
+	}
+	if objLayer.Objects[0].Type != "chest_opened" || objLayer.Objects[0].Width != 20 {
+		t.Errorf("Object not updated correctly: %+v", objLayer.Objects[0])
+	}
+
+	if err := objLayer.EditObject(5, Object{}); err == nil {
+		t.Errorf("Expected error for out-of-bounds EditObject, got nil")
+	}
+
+	tsLayer := TilesetLayer{
+		Tiles: []Tile{
+			{Index: "0", Coordinates: &Coordinates{X: 0, Y: 0}},
+		},
+	}
+
+	err = tsLayer.EditTile(0, Tile{
+		Index:       "5",
+		Coordinates: &Coordinates{X: 16, Y: 16},
+	})
+	if err != nil {
+		t.Fatalf("EditTile failed: %v", err)
+	}
+	if tsLayer.Tiles[0].Index != "5" || tsLayer.Tiles[0].Coordinates.X != 16 {
+		t.Errorf("Tile not updated correctly: %+v", tsLayer.Tiles[0])
+	}
+
+	if err := tsLayer.EditTile(5, Tile{}); err == nil {
+		t.Errorf("Expected error for out-of-bounds EditTile, got nil")
+	}
+}
