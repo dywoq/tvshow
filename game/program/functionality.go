@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"tvshow/game/audio"
 	"tvshow/game/keyboard"
 	"tvshow/game/room"
 )
@@ -181,5 +182,31 @@ func ProvideFunctionality() {
 	})
 	interpret.RegisterFunction("__key_just_released", func(key string) bool {
 		return keyboard.JustReleased(key)
+	})
+
+	// Audio functionality
+	interpret.RegisterFunction("__audio_ogg_init", func(playerName string, filepath string) bool {
+		return audio.Initialize(audio.TypeOgg, playerName, filepath) == nil
+	})
+	interpret.RegisterFunction("__audio_close", func(playerName string) bool {
+		return audio.Close(playerName) == nil
+	})
+	interpret.RegisterFunction("__audio_is_playing", func(playerName string) bool {
+		return audio.IsPlaying(playerName)
+	})
+	interpret.RegisterFunction("__audio_rewind", func(playerName string) bool {
+		return audio.Rewind(playerName) == nil
+	})
+	interpret.RegisterFunction("__audio_pause", func(playerName string) bool {
+		return audio.Pause(playerName) == nil
+	})
+	interpret.RegisterFunction("__audio_set_volume", func(playerName string, volume float64) bool {
+		return audio.SetVolume(playerName, volume) == nil
+	})
+	interpret.RegisterFunction("__audio_get_volume", func(playerName string) float64 {
+		return audio.GetVolume(playerName)
+	})
+	interpret.RegisterFunction("__audio_play", func(playerName string) bool {
+		return audio.Play(playerName) == nil
 	})
 }

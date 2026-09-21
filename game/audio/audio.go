@@ -25,18 +25,20 @@ const (
 func Initializer() error {
 	mu.Lock()
 	defer mu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("initializing the audio context failed: %v", r)
+		}
+	}()
 	context = audio.NewContext(44100)
-	if r := recover(); r != nil {
-		return fmt.Errorf("initializing the audio context failed: %v", r)
-	}
 	return nil
 }
 
-// Play converts the file into stream and stores the initialized player
+// Initialize converts the file into stream and stores the initialized player
 // into the underlying map. Returns an error if the conversion failed,
 // t is an unknown audio type or the audio player with playerName already
 // exists.
-func Play(t Type, playerName string, filepath string) error {
+func Initialize(t Type, playerName string, filepath string) error {
 	mu.Lock()
 	defer mu.Unlock()
 	if _, ok := players[playerName]; ok {
@@ -72,6 +74,7 @@ func Close(playerName string) error {
 		return fmt.Errorf("failed to find the player %q", playerName)
 	}
 	p.PauseAndStopReading()
+	delete(players, playerName)
 	return nil
 }
 
@@ -131,4 +134,17 @@ func GetVolume(playerName string) float64 {
 		return -1
 	}
 	return p.Volume()
+}
+
+// Play searches for the audio player with playerName name and plays it.
+// Returns an error if it is not found.
+func Play(playerName string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	p, ok := players[playerName]
+	if !ok {
+		return fmt.Errorf("failed to find the player %q", playerName)
+	}
+	p.Play()
+	return nil
 }

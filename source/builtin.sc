@@ -46,4 +46,17 @@ bool __key_pressed(string key);
 bool __key_just_pressed(string key);
 bool __key_just_releazed(string key);
 
+//
+// AUDIO FUNCTIONALITY
+//
+
+bool __audio_ogg_init(string player_name, string filepath);
+bool __audio_close(string player_name);
+bool __audio_is_playing(string player_name);
+bool __audio_rewind(string player_name);
+bool __audio_pause(string player_name);
+bool __audio_set_volume(string player_name, float volume);
+float __audio_get_volume(string player_name);
+bool __audio_play(string player_name);
+
 #endif

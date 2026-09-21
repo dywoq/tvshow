@@ -14,14 +14,21 @@ internal void game_add_rooms() {
 	}
 }
 
+internal void game_add_audio() {
+	if (!__audio_ogg_init("main_music", "assets/audio/test.ogg")) {
+		throw "failed to init assets/audio/test.ogg";
+	}
+}
+
 void game_frame() {
 	alarm_update();
 	if (!game_initialized) {
 		try {
 			game_add_rooms();
+			game_add_audio();
 			game_initialized = true;
 		} catch (string exception) {
-			error("A room failed to add: " + exception, true);
+			error("Game failed to initialize: " + exception, true);
 		}
 	}
 }
