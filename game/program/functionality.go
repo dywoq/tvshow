@@ -128,6 +128,31 @@ func ProvideFunctionality() {
 		}
 		return false
 	})
+	interpret.RegisterFunction("__room_object_scale", func(ttype string, scale int) bool {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				obj.Scale = scale
+				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_object_get_scale", func(ttype string) int {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, obj := range room.Objects {
+			if obj.Data.Type == ttype {
+				return obj.Scale
+			}
+		}
+		return -1
+	})
 	interpret.RegisterFunction("__room_is_current", func(name string) bool {
 		return room.GetCurrentRoomName() == name
 	})
@@ -168,6 +193,31 @@ func ProvideFunctionality() {
 		for _, spr := range r.Sprites {
 			if spr.Name == name {
 				return spr.Y
+			}
+		}
+		return -1
+	})
+	interpret.RegisterFunction("__room_sprite_scale", func(name string, scale int) bool {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, spr := range room.Sprites {
+			if spr.Name == name {
+				spr.Scale = scale
+				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_sprite_get_scale", func(name string) int {
+		room, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, spr := range room.Sprites {
+			if spr.Name == name {
+				return spr.Scale
 			}
 		}
 		return -1
