@@ -14,6 +14,7 @@ import (
 type Object struct {
 	Data                  *editor.Object
 	CurrentSubSpriteIndex int
+	Scale                 int
 }
 
 // Sprite represents a room independent sprite that does not belong to an object.
@@ -23,6 +24,7 @@ type Sprite struct {
 	Image      image.Image
 	X          int
 	Y          int
+	Scale      int
 }
 
 // Room consists of the room's information.
@@ -76,6 +78,7 @@ func SetCurrentRoom(name string) error {
 				r.Objects = append(r.Objects, &Object{
 					Data:                  &r.Data.ObjectLayers[i].Objects[j],
 					CurrentSubSpriteIndex: 0,
+					Scale:                 1,
 				})
 			}
 		}
@@ -150,6 +153,53 @@ func loadImageFromFile(filepath string) (image.Image, error) {
 	return img, nil
 }
 
+// ScaleSprite sets the scale of an independent sprite in the current room.
+// Returns an error if the current room or sprite does not exist.
+func ScaleSprite(name string, scale int) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	r, ok := rooms[currentRoom]
+	if !ok || r == nil {
+		return fmt.Errorf("room %q does not exist", currentRoom)
+	}
+
+	for _, spr := range r.Sprites {
+		if spr.Name == name {
+			spr.Scale = scale
+			return nil
+		}
+	}
+
+	return fmt.Errorf("sprite %q does not exist", name)
+}
+
+// ScaleObjectSprite sets the scale of an object's sprite in the current room.
+// Returns an error if the current room or object does not exist.
+func ScaleObjectSprite(name string, scale int) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	r, ok := rooms[currentRoom]
+	if !ok || r == nil {
+		return fmt.Errorf("room %q does not exist", currentRoom)
+	}
+
+	found := false
+	for _, obj := range r.Objects {
+		if obj != nil && obj.Data != nil && obj.Data.Type == name {
+			obj.Scale = scale
+			found = true
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("object %q does not exist", name)
+	}
+
+	return nil
+}
+
 // AddSprite opens a sprite at the provided filepath and decodes it
 // using the [image.Decode] method, and stores a [Sprite] instance in
 // the current room's sprites slice.
@@ -170,6 +220,7 @@ func AddSprite(name, filepath string, x, y int) error {
 		Image:      img,
 		X:          x,
 		Y:          y,
+		Scale:      1,
 	})
 	return nil
 }
@@ -223,6 +274,11 @@ func Painter(screen *ebiten.Image) {
 		}
 
 		op := &ebiten.DrawImageOptions{}
+		scale := float64(obj.Scale)
+		if scale <= 0 {
+			scale = 1.0
+		}
+		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(obj.Data.Coordinates.X), float64(obj.Data.Coordinates.Y))
 		screen.DrawImage(ebSubImg, op)
 	}
@@ -242,6 +298,11 @@ func Painter(screen *ebiten.Image) {
 		}
 
 		op := &ebiten.DrawImageOptions{}
+		scale := float64(spr.Scale)
+		if scale <= 0 {
+			scale = 1.0
+		}
+		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(spr.X), float64(spr.Y))
 		screen.DrawImage(ebSprImg, op)
 	}

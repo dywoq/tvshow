@@ -293,3 +293,124 @@ func TestPainterTilesetAndSubSpriteCaching(t *testing.T) {
 	// Second Painter call should succeed without error/panic using cached images
 	Painter(screen)
 }
+
+func TestScaleSpriteAndObjectSprite(t *testing.T) {
+	tempDir := t.TempDir()
+	ClearCache()
+
+	// Reset global current room state for testing empty room state
+	mu.Lock()
+	currentRoom = "non_existent_room_xyz"
+	mu.Unlock()
+
+	// 1. Error when current room is not set/exists
+	if err := ScaleSprite("spr1", 2); err == nil {
+		t.Errorf("Expected error when no current room set, got nil")
+	}
+	if err := ScaleObjectSprite("Hero", 2); err == nil {
+		t.Errorf("Expected error when no current room set, got nil")
+	}
+
+	// Create test image files for object sprite sheet and standalone sprite
+	spriteSheetPath := tempDir + "/ss.png"
+	ssImg := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	f1, err := os.Create(spriteSheetPath)
+	if err != nil {
+		t.Fatalf("Failed to create sprite sheet: %v", err)
+	}
+	_ = png.Encode(f1, ssImg)
+	f1.Close()
+
+	sprPath := tempDir + "/spr.png"
+	sprImg := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	f2, err := os.Create(sprPath)
+	if err != nil {
+		t.Fatalf("Failed to create sprite image: %v", err)
+	}
+	_ = png.Encode(f2, sprImg)
+	f2.Close()
+
+	roomData := &editor.Room{
+		Width:  100,
+		Height: 100,
+		ObjectLayers: []editor.ObjectLayer{
+			{
+				Objects: []editor.Object{
+					{
+						Type:                 "Hero",
+						SpriteSheet:          spriteSheetPath,
+						SubSpriteWidth:       16,
+						SubSpriteHeight:      16,
+						SubSpritesTotalCount: 4,
+						Coordinates:          editor.Coordinates{X: 10, Y: 10},
+					},
+					{
+						Type:                 "Hero",
+						SpriteSheet:          spriteSheetPath,
+						SubSpriteWidth:       16,
+						SubSpriteHeight:      16,
+						SubSpritesTotalCount: 4,
+						Coordinates:          editor.Coordinates{X: 30, Y: 10},
+					},
+				},
+			},
+		},
+	}
+
+	roomFile := tempDir + "/scale_room.json"
+	if err := editor.SaveRoomToFile(roomData, roomFile); err != nil {
+		t.Fatalf("Failed to save room file: %v", err)
+	}
+
+	roomName := "scale_room"
+	if err := Add(roomName, roomFile); err != nil {
+		t.Fatalf("Failed to add room: %v", err)
+	}
+	if err := SetCurrentRoom(roomName); err != nil {
+		t.Fatalf("Failed to set current room: %v", err)
+	}
+
+	if err := AddSprite("standalone", sprPath, 5, 5); err != nil {
+		t.Fatalf("Failed to add sprite: %v", err)
+	}
+
+	// Verify default scale is 1
+	r, err := GetCurrentRoom()
+	if err != nil {
+		t.Fatalf("Failed to get current room: %v", err)
+	}
+	if len(r.Objects) != 2 || r.Objects[0].Scale != 1 || r.Objects[1].Scale != 1 {
+		t.Errorf("Expected object default scale to be 1, got %d, %d", r.Objects[0].Scale, r.Objects[1].Scale)
+	}
+	if len(r.Sprites) != 1 || r.Sprites[0].Scale != 1 {
+		t.Errorf("Expected sprite default scale to be 1, got %d", r.Sprites[0].Scale)
+	}
+
+	// Test non-existent sprite and object
+	if err := ScaleSprite("non_existent", 2); err == nil {
+		t.Errorf("Expected error for non-existent sprite, got nil")
+	}
+	if err := ScaleObjectSprite("non_existent", 2); err == nil {
+		t.Errorf("Expected error for non-existent object, got nil")
+	}
+
+	// Scale sprite and object
+	if err := ScaleSprite("standalone", 3); err != nil {
+		t.Fatalf("ScaleSprite failed: %v", err)
+	}
+	if err := ScaleObjectSprite("Hero", 2); err != nil {
+		t.Fatalf("ScaleObjectSprite failed: %v", err)
+	}
+
+	// Verify scales updated
+	if r.Sprites[0].Scale != 3 {
+		t.Errorf("Expected sprite scale 3, got %d", r.Sprites[0].Scale)
+	}
+	if r.Objects[0].Scale != 2 || r.Objects[1].Scale != 2 {
+		t.Errorf("Expected object scales to be 2, got %d and %d", r.Objects[0].Scale, r.Objects[1].Scale)
+	}
+
+	// Run Painter to ensure rendering with scaled objects/sprites works without issue
+	screen := ebiten.NewImage(100, 100)
+	Painter(screen)
+}
