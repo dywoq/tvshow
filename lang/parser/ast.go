@@ -441,6 +441,24 @@ func (n *StringifyExpr) Position() token.Position { return n.Token.Pos }
 func (*StringifyExpr) expression()                {}
 func (n *StringifyExpr) String() string           { return n.Token.Literal + "(" + nodeString(n.Value) + ")" }
 
+type LambdaExpr struct {
+	ReturnType []TypeSpec
+	Declarator Declarator
+	Parameters []Parameter
+	Body       *BlockStmt
+}
+
+func (n *LambdaExpr) Position() token.Position {
+	if len(n.ReturnType) > 0 {
+		return n.ReturnType[0].Position()
+	}
+	return n.Body.Position()
+}
+func (*LambdaExpr) expression() {}
+func (n *LambdaExpr) String() string {
+	return typeSpecsString(n.ReturnType) + "(...) " + nodeString(n.Body)
+}
+
 type CommaExpr struct{ Expressions []Expression }
 
 func (n *CommaExpr) Position() token.Position { return n.Expressions[0].Position() }

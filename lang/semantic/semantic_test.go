@@ -6,6 +6,7 @@ import (
 
 	"tvshow/lang/lexer"
 	"tvshow/lang/parser"
+	"tvshow/lang/token"
 )
 
 func analyzeSource(t *testing.T, source string) error {
@@ -511,6 +512,68 @@ func TestAnalyzeBuiltinPositionFunctions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAnalyzeLambdaAndInternal(t *testing.T) {
+	// Valid lambda usage
+	validLambda := `
+	typedef struct UserStruct { int id; } UserStruct;
+	typedef int (*FuncAlias)(int);
+	void start() {
+		int result = 2 * 2;
+		auto lambda = int(int given_result) {
+			return given_result * 2 + result;
+		};
+		int r = lambda(result);
+
+		FuncAlias alias = int(int x) { return x + 1; };
+	}`
+	if err := analyzeSource(t, validLambda); err != nil {
+		t.Fatalf("unexpected error analyzing valid lambda: %v", err)
+	}
+
+	// Lambda return type mismatch error
+	mismatchLambda := `
+	typedef struct UserStruct { int id; } UserStruct;
+	void start() {
+		int result = 4;
+		auto lambda = int(int given_result) {
+			return given_result * 2;
+		};
+		UserStruct user = lambda(result);
+	}`
+	err := analyzeSource(t, mismatchLambda)
+	t.Logf("mismatchLambda err = %v", err)
+	if err == nil || !strings.Contains(err.Error(), `incompatible type in initialization of "user"`) {
+		t.Fatalf("expected incompatible type error, got: %v", err)
+	}
+
+	// Lambda at global scope error
+	globalLambda := `auto global_lambda = int(int x) { return x; };`
+	err = analyzeSource(t, globalLambda)
+	if err == nil || !strings.Contains(err.Error(), "lambda expression is only allowed within a function") {
+		t.Fatalf("expected global lambda error, got: %v", err)
+	}
+
+	// Internal keyword cross-file access error
+	defTokens := lexer.New("def.sc", "internal float PI = 3.14;\n").Tokens()
+	mainTokens := lexer.New("main.sc", "float PI2 = PI;\n").Tokens()
+	// Combine tokens without EOF in def
+	var combined []token.Token
+	for _, tok := range defTokens {
+		if tok.Type != token.EOF {
+			combined = append(combined, tok)
+		}
+	}
+	combined = append(combined, mainTokens...)
+	prog, err := parser.Parse(combined)
+	if err != nil {
+		t.Fatalf("parse combined error: %v", err)
+	}
+	err = Analyze(prog)
+	if err == nil || !strings.Contains(err.Error(), `cannot access internal symbol "PI" from file "main.sc"`) {
+		t.Fatalf("expected internal symbol access error, got: %v", err)
 	}
 }
 

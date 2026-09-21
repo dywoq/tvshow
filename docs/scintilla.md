@@ -12,6 +12,8 @@ Scintilla source files typically use the `.sc` extension. Scintilla code is tran
 - **Memory Management:** Scintilla omits manual memory management (`malloc`/`free`), direct physical memory addresses, pointer arithmetic, and inline assembly. Pointer dereference (`*`) and address-of (`&`) syntax exist abstractly for variable reference and lvalue modification, but runtime memory is safely managed by the runtime environment.
 - **Runtime & Host Integration:** Guest runtime functionality relies on host-registered Go functions (`Interpreter.RegisterFunction`). Guest functions and host functions can pass function references to one another and execute provided functions seamlessly.
 - **Function Pointers & Aliases:** Supports referencing functions (`fn` or `&fn`), function pointer variables, function type aliases using `typedef` (e.g., `typedef int (*BinOp)(int, int);`), and strict type checking of function signatures during compile time (semantic analysis).
+- **Lambdas & Closures:** Supports anonymous functions (lambdas) defined inside functions with explicit return types, closure capturing over parent function variables, and strict type alias checking.
+- **Internal File Scoping:** Supports the `internal` keyword to restrict symbol visibility strictly to the declaring source file.
 - **Header & Source Files:** Direct header/source compilation model simplified for interpretation.
 - **Public & Modular Architecture:** Lexer, macro preprocessor, parser, semantic analyzer, bytecode translator, and interpreter are exposed as public Go packages designed for embedding, modularity, and reusability.
 
@@ -248,6 +250,71 @@ Stack-based virtual machine executing Scintilla bytecode programs.
 | `pop_catch`      | none                      | Removes the top catch handler from the current execution frame.                                                                                 |
 | `swap`           | none                      | Swaps top two values on the operand stack.                                                                                                      |
 | `defer`          | `int` (arg count)         | Pops argument values and target function, registering deferred function call on current execution frame.                                        |
+
+---
+
+## Lambdas (Anonymous Functions)
+
+Scintilla supports lambdas, which are anonymous functions defined inside guest functions.
+
+### 1. Rules & Syntax
+
+- **Syntax:** `ReturnType(Parameters) { Body }`
+- **Function Context Requirement:** Lambdas must be defined within a function (disallowed at global scope).
+- **Return Type Requirement:** Lambdas must explicitly define their return type (e.g., `int`, `void`, `float`, `string`, `auto`, etc.).
+- **Lexical Closures:** Lambdas can access and modify any local variables that exist in their parent enclosing function at runtime.
+- **Type Checking & Aliases:** Lambdas are assigned function signature types and strictly verified against function type aliases (`typedef`) or target variable types during semantic analysis.
+
+### 2. Example Program
+
+```c
+typedef int (*BinOp)(int, int);
+
+void start() {
+	int result = 2 * 2;
+
+	// int is the return type and (int given_result) contains arguments
+	auto lambda = int(int given_result) {
+		return given_result * 2 + result;
+	};
+
+	int res = lambda(result);
+
+	// Satisfies function type alias BinOp
+	BinOp op = int(int a, int b) { return a + b; };
+
+	// Rejected at compile-time: return type int does not match UserStruct
+	// UserStruct user = lambda(result);
+}
+```
+
+---
+
+## File-Scoped Visibility (`internal`)
+
+Scintilla supports the `internal` keyword to limit the visibility of symbols (functions, variables, typedefs, etc.) strictly to the source file where they are declared.
+
+### 1. Rules & Syntax
+
+- **Visibility:** A symbol declared with `internal` can only be referenced by code within the same source file.
+- **Cross-File Access Error:** Attempting to access an `internal` symbol from another source file (e.g. via `#include`) produces a compile-time semantic analysis error.
+- **File Name Tracking:** The macro preprocessor propagates source file locations (`Pos.Filename`) into `internal` keyword tokens so file boundary rules are strictly enforced regardless of header inclusions.
+
+### 2. Example Program
+
+**def.sc**:
+
+```c
+internal float PI = 3.14;
+```
+
+**main.sc**:
+
+```c
+#include "def.sc"
+
+float PI2 = PI; // Semantic analysis error: cannot access internal symbol "PI" from file "main.sc"
+```
 
 ---
 
@@ -521,7 +588,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 
 | C99 Syntax Feature          | Scintilla Status  | Details & Notes                                                                                                                                                                                                                                                                                                                                                                                                        |
 | --------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keywords                    | **Supported**     | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `defer`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `stringify`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
+| Keywords                    | **Supported**     | C99 keywords recognized, except for removed keywords (`register`, `volatile`, `restrict`, `static`, `extern`, `inline`) (`auto`, `break`, `case`, `char`, `const`, `continue`, `default`, `defer`, `do`, `double`, `else`, `enum`, `float`, `for`, `goto`, `if`, `internal`, `int`, `long`, `return`, `short`, `signed`, `sizeof`, `stringify`, `struct`, `switch`, `typedef`, `union`, `unsigned`, `void`, `while`, `_Bool`, `_Complex`, `_Imaginary`). |
 | Comments                    | **Supported**     | Line comments (`//`) and block comments (`/* ... */`).                                                                                                                                                                                                                                                                                                                                                                 |
 | Numeric Literals            | **Supported**     | Decimal, Hexadecimal (`0x`), Octal (`0`), Floating-point scientific notation (`1e-10`), suffixes (`u`, `l`, `f`).                                                                                                                                                                                                                                                                                                      |
 | Character & String Literals | **Supported**     | Escaped sequences handled by lexer/interpreter.                                                                                                                                                                                                                                                                                                                                                                        |
@@ -550,7 +617,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Enumerations (`enum`)                                                      | **Supported**                       | Enumerator constants registered in value symbol scope.                                                                                                                                                                                                                                                                                                                                                                   |
 | Typedefs (`typedef`)                                                       | **Supported**                       | Custom type identifiers tracked in parser and semantic scopes, including function pointer and function signature aliases (`typedef int (*BinOp)(int, int)`).                                                                                                                                                                                                                                                             |
 | Array Declarations                                                         | **Supported**                       | Fixed and variable array declarator suffixes parsed; semantic analyzer enforces integer subscripts, non-negative array bounds, non-void element types, and initializer list bounds checking.                                                                                                                                                                                                                             |
-| Specifiers (`const`, `auto`)                                               | **Supported** (for `const`, `auto`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type that can contain any type of value without compile-time type checks. Type conversions (casts) on `auto` variables convert values to specified target types at runtime, reporting a type conversion error if types do not match. Note: `static`, `extern`, `inline`, `register`, `volatile`, and `restrict` keywords removed. |
+| Specifiers (`const`, `auto`, `internal`)                                   | **Supported** (for `const`, `auto`, `internal`) | `const` qualifiers strictly enforced by semantic analyzer. `auto` represents a dynamic type. `internal` specifier limits symbol visibility to declaring source file. Note: `static`, `extern`, `inline`, `register`, `volatile`, and `restrict` keywords removed. |
 | Standard Library (`<stdio.h>`, `<stdlib.h>`, etc.)                         | _Divergent_                         | Standard C library headers are omitted. Native host functions are exposed via Go bindings (`RegisterFunction`).                                                                                                                                                                                                                                                                                                          |
 
 ### 5. Expressions & Operators
@@ -567,7 +634,7 @@ Scintilla aims for high alignment with ISO/IEC 9899:1999 (C99) syntax and semant
 | Conditional Operator (`?:`)           | **Supported**    | Short-circuit ternary evaluation retained via conditional jumps with branch type compatibility checking.                                                                                         |
 | Assignment & Compound Assignment      | **Supported**    | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `<<=`, `>>=`. Strict lvalue and `const` immutability enforcement.                                                                          |
 | Comma Expression (`,`)                | **Supported**    | Sequential evaluation yielding last expression result.                                                                                                                                           |
-| Function Calls                        | **Supported**    | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer and function alias calls (`fn(a, b)` or `(*fn)(a, b)`). |
+| Function Calls & Lambdas              | **Supported**    | Argument count and parameter type compatibility checking for guest and host function invocations, including first-class function pointer, function alias, and lambda anonymous function calls (`fn(a, b)` or `(*fn)(a, b)`). |
 | Cast Expressions (`(type)expr`)       | **Supported**    | Parsed, type-checked during semantic analysis, and evaluated at runtime. Converts `auto` variables to specified target types, reporting a type conversion error if types do not match.           |
 | `sizeof` Operator                     | **Supported**    | Evaluates byte size for type specifiers (including fixed-size arrays) or element count/length for dynamic/fixed array and string expressions.                                                    |
 | `stringify()` Operator                | **Supported**    | Converts any value, struct, array, etc. into a value having type `string`.                                                                                                                       |
