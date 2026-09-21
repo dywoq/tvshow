@@ -129,8 +129,10 @@ const (
 )
 
 type symbol struct {
-	kind symbolKind
-	typ  Type
+	kind       symbolKind
+	typ        Type
+	isInternal bool
+	filename   string
 }
 
 type scope struct {
@@ -147,13 +149,14 @@ type functionContext struct {
 // Analyzer holds the state used for one analysis.  A new Analyzer must be
 // used for each translation unit.
 type Analyzer struct {
-	values *scope
-	types  *scope
-	errs   Errors
+	values          *scope
+	types           *scope
+	errs            Errors
 
-	function *functionContext
-	loops    int
-	switches int
+	function        *functionContext
+	loops           int
+	switches        int
+	currentFilename string
 }
 
 func isBuiltinFunction(name string) bool {
@@ -201,12 +204,19 @@ func (a *Analyzer) registerBuiltins() {
 func Analyze(program *parser.Program) error { return New().Analyze(program) }
 
 // Analyze checks program and returns all errors found, if any.
+func (a *Analyzer) updateFilename(pos token.Position) {
+	if pos.Filename != "" {
+		a.currentFilename = pos.Filename
+	}
+}
+
 func (a *Analyzer) Analyze(program *parser.Program) error {
 	if program == nil {
 		return Error{Message: "cannot analyze a nil program"}
 	}
 	a.predeclareFunctions(program)
 	for _, declaration := range program.Declarations {
+		a.updateFilename(declaration.Position())
 		a.declaration(declaration, true)
 	}
 	if len(a.errs) != 0 {
@@ -235,30 +245,57 @@ func (a *Analyzer) problem(pos token.Position, format string, args ...any) {
 func (a *Analyzer) pushScope() { a.values = newScope(a.values); a.types = newScope(a.types) }
 func (a *Analyzer) popScope()  { a.values, a.types = a.values.parent, a.types.parent }
 
+func hasInternalSpec(specs []parser.TypeSpec) (bool, string) {
+	for _, spec := range specs {
+		if spec.Token.Type == token.INTERNAL {
+			return true, spec.Token.Pos.Filename
+		}
+	}
+	return false, ""
+}
+
+func (a *Analyzer) checkInternalAccess(pos token.Position, name string, sym symbol) {
+	if !sym.isInternal {
+		return
+	}
+	currentFile := pos.Filename
+	if currentFile == "" {
+		currentFile = a.currentFilename
+	}
+	if sym.filename != "" && currentFile != "" && sym.filename != currentFile {
+		a.problem(pos, "cannot access internal symbol %q from file %q", name, currentFile)
+	}
+}
+
 func (a *Analyzer) predeclareFunctions(program *parser.Program) {
 	for _, declaration := range program.Declarations {
 		if function, ok := declaration.(*parser.FunctionDecl); ok && function.Declarator.Name.Literal != "" {
 			name := function.Declarator.Name.Literal
 			retBase := a.typeFromSpecs(function.Specs)
 			funcType := a.typeFromDeclarator(retBase, function.Declarator)
+			isInternal, filename := hasInternalSpec(function.Specs)
 			if old, exists := a.values.entries[name]; exists && (old.kind != functionSymbol || isBuiltinFunction(name)) {
 				a.problem(function.Declarator.Name.Pos, "redefinition of %q", name)
 			} else {
-				a.values.entries[name] = symbol{kind: functionSymbol, typ: funcType}
+				a.values.entries[name] = symbol{kind: functionSymbol, typ: funcType, isInternal: isInternal, filename: filename}
 			}
 		}
 	}
 }
 
 func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
+	if declaration != nil {
+		a.updateFilename(declaration.Position())
+	}
 	switch d := declaration.(type) {
 	case *parser.FunctionDecl:
 		a.specs(d.Specs)
 		name := d.Declarator.Name.Literal
 		retBase := a.typeFromSpecs(d.Specs)
 		funcType := a.typeFromDeclarator(retBase, d.Declarator)
+		isInternal, filename := hasInternalSpec(d.Specs)
 		if name != "" {
-			a.values.entries[name] = symbol{kind: functionSymbol, typ: funcType}
+			a.values.entries[name] = symbol{kind: functionSymbol, typ: funcType, isInternal: isInternal, filename: filename}
 		}
 		if d.Body != nil {
 			a.functionDecl(d)
@@ -267,10 +304,18 @@ func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
 		a.specs(d.Specs)
 		isTypedef := hasSpec(d.Specs, token.TYPEDEF)
 		baseType := a.typeFromSpecs(d.Specs)
+		isInternal, filename := hasInternalSpec(d.Specs)
 
 		for _, declarator := range d.Declarators {
 			name := declarator.Name.Literal
 			vType := a.typeFromDeclarator(baseType, declarator)
+
+			if vType.Kind == TypeAuto && declarator.Initializer != nil {
+				initType := a.expression(declarator.Initializer)
+				if initType.Kind == TypeFunction {
+					vType = initType
+				}
+			}
 
 			if name != "" {
 				destination := a.values
@@ -284,7 +329,7 @@ func (a *Analyzer) declaration(declaration parser.Declaration, global bool) {
 				if old, exists := destination.entries[name]; exists && !(kind == functionSymbol && old.kind == functionSymbol && !isBuiltinFunction(name)) {
 					a.problem(declarator.Name.Pos, "redefinition of %q", name)
 				} else {
-					destination.entries[name] = symbol{kind: kind, typ: vType}
+					destination.entries[name] = symbol{kind: kind, typ: vType, isInternal: isInternal, filename: filename}
 				}
 			}
 
@@ -432,6 +477,7 @@ func (a *Analyzer) typeFromSpecs(specs []parser.TypeSpec) Type {
 			t.Tag = spec.Tag
 		case token.IDENT:
 			if sym, ok := a.types.lookup(spec.Token.Literal); ok {
+				a.checkInternalAccess(spec.Token.Pos, spec.Token.Literal, sym)
 				t = sym.typ
 			}
 		}
@@ -651,6 +697,9 @@ func (a *Analyzer) block(block *parser.BlockStmt, scoped bool) {
 }
 
 func (a *Analyzer) statement(statement parser.Statement) {
+	if statement != nil {
+		a.updateFilename(statement.Position())
+	}
 	switch s := statement.(type) {
 	case *parser.BlockStmt:
 		a.block(s, true)
@@ -791,13 +840,67 @@ func (a *Analyzer) expression(expression parser.Expression) Type {
 	if expression == nil {
 		return Type{Kind: TypeUnknown}
 	}
+	a.updateFilename(expression.Position())
 	switch e := expression.(type) {
 	case *parser.IdentExpr:
 		if sym, ok := a.values.lookup(e.Token.Literal); ok {
+			a.checkInternalAccess(e.Token.Pos, e.Token.Literal, sym)
 			return sym.typ
 		}
 		a.problem(e.Token.Pos, "undefined identifier %q", e.Token.Literal)
 		return Type{Kind: TypeUnknown}
+
+	case *parser.LambdaExpr:
+		if a.function == nil {
+			a.problem(e.Position(), "lambda expression is only allowed within a function")
+		}
+		if len(e.ReturnType) == 0 {
+			a.problem(e.Position(), "lambda expression must define a return type")
+		}
+		a.specs(e.ReturnType)
+		retBase := a.typeFromSpecs(e.ReturnType)
+		retType := a.typeFromDeclarator(retBase, e.Declarator)
+
+		var params []Type
+		for _, p := range e.Parameters {
+			a.specs(p.Specs)
+			pBase := a.typeFromSpecs(p.Specs)
+			pType := a.typeFromDeclarator(pBase, p.Declarator)
+			params = append(params, pType)
+		}
+
+		lambdaFuncType := Type{
+			Kind:       TypeFunction,
+			ReturnType: &retType,
+			Params:     params,
+		}
+
+		previousFunc := a.function
+		a.function = &functionContext{returnType: retType, labels: make(map[string]token.Position)}
+		a.pushScope()
+
+		for i, p := range e.Parameters {
+			pName := p.Declarator.Name.Literal
+			pType := params[i]
+			if pName != "" {
+				if _, exists := a.values.entries[pName]; exists {
+					a.problem(p.Declarator.Name.Pos, "redefinition of parameter %q", pName)
+				} else {
+					a.values.entries[pName] = symbol{kind: variableSymbol, typ: pType}
+				}
+			}
+		}
+
+		a.block(e.Body, false)
+		for _, jump := range a.function.gotos {
+			if _, ok := a.function.labels[jump.Label.Literal]; !ok {
+				a.problem(jump.Label.Pos, "undefined label %q", jump.Label.Literal)
+			}
+		}
+
+		a.popScope()
+		a.function = previousFunc
+		return lambdaFuncType
 
 	case *parser.LiteralExpr:
 		switch e.Token.Type {
@@ -1197,9 +1300,6 @@ func (a *Analyzer) isCompatible(target, source Type) bool {
 		return true
 	}
 
-	if (target.Kind == TypeStruct || target.Kind == TypeArray) && isZeroLiteral(source) {
-		return true
-	}
 
 	if target.Kind == TypePointer && isIntegerType(source.Kind) {
 		return true

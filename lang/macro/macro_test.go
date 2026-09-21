@@ -36,6 +36,35 @@ wrong
 	}
 }
 
+func TestInternalKeywordFilename(t *testing.T) {
+	e := New()
+	e.Include = func(name string, _ token.Position) ([]token.Token, error) {
+		if name == "def.sc" {
+			return lexer.New("def.sc", "internal float PI = 3.14;\n").Tokens(), nil
+		}
+		return nil, nil
+	}
+	mainTokens := lexer.New("main.sc", "#include \"def.sc\"\nfloat PI2 = PI;\n").Tokens()
+	got, err := e.Expand(mainTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var foundInternal *token.Token
+	for i := range got {
+		if got[i].Type == token.INTERNAL {
+			foundInternal = &got[i]
+			break
+		}
+	}
+	if foundInternal == nil {
+		t.Fatalf("expected internal keyword token in output")
+	}
+	if foundInternal.Pos.Filename != "def.sc" {
+		t.Fatalf("expected internal keyword filename to be 'def.sc', got %q", foundInternal.Pos.Filename)
+	}
+}
+
 func TestErrorDirective(t *testing.T) {
 	e := New()
 	_, err := e.Expand(source("#error Something went wrong"))

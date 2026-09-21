@@ -168,6 +168,7 @@ const (
 	CATCH     // catch
 	STRINGIFY // stringify
 	DEFER     // defer
+	INTERNAL  // internal
 
 	keywordEnd
 )
@@ -279,6 +280,7 @@ var (
 		CATCH:     "catch",
 		STRINGIFY: "stringify",
 		DEFER:     "defer",
+		INTERNAL:  "internal",
 	}
 	keywords = map[string]TokenType{
 		"auto":       AUTO,
@@ -317,7 +319,8 @@ var (
 		"try":        TRY,
 		"catch":      CATCH,
 		"stringify":  STRINGIFY,
-		"defer":     DEFER,
+		"defer":      DEFER,
+		"internal":   INTERNAL,
 	}
 )
 

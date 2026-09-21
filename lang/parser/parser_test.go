@@ -190,6 +190,43 @@ func TestParseStringify(t *testing.T) {
 	}
 }
 
+func TestParseLambdaAndInternal(t *testing.T) {
+	input := `internal float PI = 3.14;
+
+void start() {
+	int result = 2 * 2;
+	auto lambda = int(int given_result) {
+		return given_result * 2;
+	};
+	int r = lambda(result);
+}`
+	program, err := Parse(lexer.New("lambda.sc", input).Tokens())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(program.Declarations) != 2 {
+		t.Fatalf("declarations = %d, want 2", len(program.Declarations))
+	}
+
+	piDecl, ok := program.Declarations[0].(*VarDecl)
+	if !ok || piDecl.Specs[0].Token.Type != token.INTERNAL {
+		t.Fatalf("expected internal specifier in PI declaration")
+	}
+
+	fn := program.Declarations[1].(*FunctionDecl)
+	varDecl := fn.Body.Items[1].(*VarDecl)
+	lambdaExpr, ok := varDecl.Declarators[0].Initializer.(*LambdaExpr)
+	if !ok {
+		t.Fatalf("expected LambdaExpr initializer, got %T", varDecl.Declarators[0].Initializer)
+	}
+	if len(lambdaExpr.ReturnType) == 0 || lambdaExpr.ReturnType[0].Token.Type != token.INT_KW {
+		t.Errorf("expected return type int, got %v", lambdaExpr.ReturnType)
+	}
+	if len(lambdaExpr.Parameters) != 1 || lambdaExpr.Parameters[0].Declarator.Name.Literal != "given_result" {
+		t.Errorf("expected parameter given_result, got %v", lambdaExpr.Parameters)
+	}
+}
+
 func TestNodesImplementStringer(t *testing.T) {
 	var _ Node = &Program{}
 	var _ Node = &VarDecl{Specs: []TypeSpec{{Token: token.Token{}}}}
