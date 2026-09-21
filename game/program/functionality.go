@@ -128,7 +128,48 @@ func ProvideFunctionality() {
 		return false
 	})
 	interpret.RegisterFunction("__room_is_current", func(name string) bool {
-		return room.GetCurrentRoomName() == name 
+		return room.GetCurrentRoomName() == name
+	})
+	interpret.RegisterFunction("__room_add_sprite", func(name, filepath string, x, y int) bool {
+		return room.AddSprite(name, filepath, x, y) == nil
+	})
+	interpret.RegisterFunction("__room_set_sprite_pos", func(name string, x, y int) bool {
+		r, err := room.GetCurrentRoom()
+		if err != nil {
+			return false
+		}
+		for _, spr := range r.Sprites {
+			if spr.Name == name {
+				spr.X = x
+				spr.Y = y
+				return true
+			}
+		}
+		return false
+	})
+	interpret.RegisterFunction("__room_get_sprite_x", func(name string) int {
+		r, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, spr := range r.Sprites {
+			if spr.Name == name {
+				return spr.X
+			}
+		}
+		return -1
+	})
+	interpret.RegisterFunction("__room_get_sprite_y", func(name string) int {
+		r, err := room.GetCurrentRoom()
+		if err != nil {
+			return -1
+		}
+		for _, spr := range r.Sprites {
+			if spr.Name == name {
+				return spr.Y
+			}
+		}
+		return -1
 	})
 
 	// Keyboard functionality

@@ -18,6 +18,7 @@ type Object struct {
 
 // Sprite represents a room independent sprite that does not belong to an object.
 type Sprite struct {
+	Name       string
 	SpritePath string
 	Image      image.Image
 	X          int
@@ -104,7 +105,7 @@ func GetCurrentRoomName() string {
 // AddSprite opens a sprite at the provided filepath and decodes it
 // using the [image.Decode] method, and stores a [Sprite] instance in
 // the current room's sprites slice.
-func AddSprite(filepath string, x, y int) error {
+func AddSprite(name, filepath string, x, y int) error {
 	mu.Lock()
 	defer mu.Unlock()
 	r := rooms[currentRoom]
@@ -117,6 +118,7 @@ func AddSprite(filepath string, x, y int) error {
 		return err
 	}
 	r.Sprites = append(r.Sprites, &Sprite{
+		Name:       name,
 		SpritePath: filepath,
 		Image:      img,
 		X:          x,
