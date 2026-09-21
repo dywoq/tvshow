@@ -3,7 +3,7 @@
 #include "builtin.sc"
 #include "container/vector.sc"
 
-bool game_initialized = false;
+internal bool game_initialized = false;
 
 void game_add_rooms() {
 	if (!__room_add("tvscene", "assets/rooms/tvscene.json")) {

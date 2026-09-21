@@ -22,7 +22,7 @@ typedef struct alarm {
 	alarm_func_t func;
 } alarm_t;
 
-vector_t alarms;
+internal vector_t alarms;
 
 //
 // Routine Description
