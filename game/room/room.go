@@ -3,6 +3,7 @@ package room
 import (
 	"fmt"
 	"image"
+	"os"
 	"sync"
 	"tvshow/game/editor"
 
@@ -98,6 +99,30 @@ func GetCurrentRoomName() string {
 	mu.Lock()
 	defer mu.Unlock()
 	return currentRoom
+}
+
+// AddSprite opens a sprite at the provided filepath and decodes it
+// using the [image.Decode] method, and stores a [Sprite] instance in
+// the current room's sprites slice.
+func AddSprite(filepath string, x, y int) error {
+	mu.Lock()
+	defer mu.Unlock()
+	r := rooms[currentRoom]
+	f, err := os.Open(filepath)
+	if err != nil {
+		return err
+	}
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return err
+	}
+	r.Sprites = append(r.Sprites, &Sprite{
+		SpritePath: filepath,
+		Image:      img,
+		X:          x,
+		Y:          y,
+	})
+	return nil
 }
 
 func Painter(screen *ebiten.Image) {
