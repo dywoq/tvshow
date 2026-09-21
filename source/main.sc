@@ -5,7 +5,7 @@
 
 internal bool game_initialized = false;
 
-void game_add_rooms() {
+internal void game_add_rooms() {
 	if (!__room_add("tvscene", "assets/rooms/tvscene.json")) {
 		throw "adding the tvscene room failed";
 	}
